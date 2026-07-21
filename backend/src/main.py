@@ -19,7 +19,13 @@ async def lifespan(_: FastAPI):
 
         init_dyn()
     except Exception:
-        pass
+        # Railway / no DynamoDB Local: seed in-memory prompts
+        try:
+            from src.services.prompts import seed_default_prompts
+
+            seed_default_prompts()
+        except Exception:
+            pass
     yield
 
 
@@ -34,10 +40,12 @@ app = FastAPI(
 )
 
 settings = get_settings()
+_cors = settings.cors_origin_list or ["*"]
+_allow_all = "*" in _cors
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.cors_origin_list or ["*"],
-    allow_credentials=True,
+    allow_origins=["*"] if _allow_all else _cors,
+    allow_credentials=not _allow_all,
     allow_methods=["*"],
     allow_headers=["*"],
 )

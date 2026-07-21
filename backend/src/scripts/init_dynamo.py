@@ -34,6 +34,11 @@ def ensure_table(name: str, key: str = "prompt_id") -> None:
 
 def main() -> None:
     s = get_settings()
+    # Railway / mock: skip remote DynamoDB (avoids long AWS connect timeouts)
+    if not s.dynamodb_endpoint and s.mock_mode:
+        seeded = seed_default_prompts()
+        print(f"seeded prompts (memory): {len(seeded)}")
+        return
     ensure_table(s.dynamodb_table_prompts, "prompt_id")
     ensure_table(s.dynamodb_table_evals, "eval_id")
     ensure_table(s.dynamodb_table_sessions, "session_id")

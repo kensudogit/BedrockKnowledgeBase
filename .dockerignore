@@ -1,0 +1,17 @@
+**/.venv
+**/node_modules
+**/.next
+**/__pycache__
+**/.pytest_cache
+**/.git
+**/terraform/.terraform
+**/*.tfstate*
+**/.env
+**/.env.local
+**/java-spring/target
+**/*.md
+!README.md
+frontend/node_modules
+frontend/.next
+backend/.venv
+backend/tests

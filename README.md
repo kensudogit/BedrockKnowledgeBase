@@ -87,6 +87,22 @@ BEDROCK_AGENT_ID=...
 S3_DOCUMENTS_BUCKET=...
 ```
 
+## Railway デプロイ
+
+ルートの `Dockerfile` + `railway.toml` + `start.sh` で単一サービスとして公開します
+（Next.js が `$PORT` で待受け、`/api/*`・`/health` を内部 uvicorn `:8180` へプロキシ）。
+
+Railway ダッシュボードで Root Directory はリポジトリルートのままにし、必要なら変数を設定:
+
+```env
+USE_BEDROCK_MOCK=true
+CORS_ORIGINS=*
+DATABASE_URL=<Railway Postgres を Add した場合は自動>
+DYNAMODB_ENDPOINT=
+```
+
+再デプロイ後、公開 URL の `/health` が `app: bedrock-knowledge-base` を返せば成功です。
+
 ## Terraform
 
 ```bash

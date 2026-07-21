@@ -16,9 +16,10 @@ class Settings(BaseSettings):
 
     app_env: str = "development"
     aws_region: str = "ap-northeast-1"
-    cors_origins: str = "http://localhost:3010"
+    cors_origins: str = "http://localhost:3010,*"
     database_url: str = "postgresql://bkb_user:bkb_password@localhost:5435/bkb_db"
-    dynamodb_endpoint: str = "http://localhost:8001"
+    # Empty = real AWS DynamoDB (or in-memory fallback). Local: http://localhost:8001
+    dynamodb_endpoint: str = ""
     dynamodb_table_prompts: str = "bkb_prompts"
     dynamodb_table_evals: str = "bkb_evals"
     dynamodb_table_sessions: str = "bkb_sessions"
