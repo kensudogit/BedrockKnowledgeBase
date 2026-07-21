@@ -1,0 +1,41 @@
+# Python
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+
+# Node
+node_modules/
+.next/
+out/
+*.tsbuildinfo
+
+# Env / secrets
+.env
+.env.local
+.env.*.local
+
+# IDE / OS
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+
+# Terraform
+terraform/.terraform/
+terraform/*.tfstate*
+terraform/*.tfvars
+!terraform/*.tfvars.example
+
+# Data / uploads
+data/uploads/
+data/cache/
+*.pdf
+!samples/**/*.md
+
+# Java
+java-spring/target/
+java-spring/.mvn/wrapper/maven-wrapper.jar

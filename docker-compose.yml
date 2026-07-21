@@ -1,0 +1,83 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: bkb-postgres
+    environment:
+      POSTGRES_USER: bkb_user
+      POSTGRES_PASSWORD: bkb_password
+      POSTGRES_DB: bkb_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bkb_user -d bkb_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 5
+
+  dynamodb:
+    image: amazon/dynamodb-local:latest
+    container_name: bkb-dynamodb
+    command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
+    ports:
+      - "8001:8000"
+
+  localstack:
+    image: localstack/localstack:3
+    container_name: bkb-localstack
+    environment:
+      SERVICES: s3,lambda,apigateway
+      DEFAULT_REGION: ap-northeast-1
+      DEBUG: 0
+    ports:
+      - "4566:4566"
+    volumes:
+      - localstack_data:/var/lib/localstack
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    container_name: bkb-backend
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://bkb_user:bkb_password@postgres:5432/bkb_db
+      DYNAMODB_ENDPOINT: http://dynamodb:8000
+      AWS_ENDPOINT_URL: http://localstack:4566
+    ports:
+      - "8180:8180"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      dynamodb:
+        condition: service_started
+    volumes:
+      - ./backend:/app
+      - ./samples:/app/samples:ro
+    command: uvicorn src.main:app --host 0.0.0.0 --port 8180 --reload
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: bkb-frontend
+    environment:
+      INTERNAL_API_URL: http://backend:8180
+      NEXT_PUBLIC_API_URL: ""
+    ports:
+      - "3010:3010"
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+      - /app/.next
+    command: npm run dev
+
+volumes:
+  postgres_data:
+  localstack_data:
