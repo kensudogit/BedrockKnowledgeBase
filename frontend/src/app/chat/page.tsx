@@ -1,30 +1,88 @@
 "use client";
 
-import { useState } from "react";
+import { FormEvent, Suspense, useEffect, useRef, useState } from "react";
+import { useSearchParams } from "next/navigation";
 import { Nav } from "@/components/Nav";
-import { api } from "@/lib/api";
+import { api, type ChatMessage, type Citation } from "@/lib/api";
+
+type UseCase = { id: string; label: string };
 
 export default function ChatPage() {
-  const [q, setQ] = useState("有給休暇の申請手順は？");
-  const [mode, setMode] = useState<"rag" | "text">("rag");
-  const [out, setOut] = useState("");
-  const [busy, setBusy] = useState(false);
+  return (
+    <Suspense fallback={<main><Nav /><p className="muted">読み込み中…</p></main>}>
+      <ChatPageInner />
+    </Suspense>
+  );
+}
 
-  async function run() {
+function ChatPageInner() {
+  const search = useSearchParams();
+  const [q, setQ] = useState("");
+  const [mode, setMode] = useState<"rag" | "text">("rag");
+  const [useCase, setUseCase] = useState("document_search");
+  const [cases, setCases] = useState<UseCase[]>([]);
+  const [sessionId, setSessionId] = useState<string | null>(null);
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+  const [meta, setMeta] = useState<string>("");
+  const bottomRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    const uc = search.get("use_case");
+    if (uc) setUseCase(uc);
+  }, [search]);
+
+  useEffect(() => {
+    api.useCases().then((u) => setCases(u.items)).catch(() => undefined);
+  }, []);
+
+  useEffect(() => {
+    bottomRef.current?.scrollIntoView({ behavior: "smooth" });
+  }, [messages, busy]);
+
+  async function send(e?: FormEvent) {
+    e?.preventDefault();
+    const text = q.trim();
+    if (!text || busy) return;
     setBusy(true);
+    setError("");
+    setQ("");
+    setMessages((m) => [...m, { role: "user", content: text }]);
     try {
-      if (mode === "rag") {
-        const r = await api.rag(q);
-        setOut(`${r.answer}\n\n---\ncitations: ${JSON.stringify(r.citations, null, 2)}`);
-      } else {
-        const r = await api.text(q);
-        setOut(r.text);
-      }
-    } catch (e) {
-      setOut(String(e));
+      const r = await api.chat({
+        message: text,
+        use_case: useCase,
+        mode,
+        session_id: sessionId,
+      });
+      setSessionId(r.session_id);
+      setMessages(
+        r.messages?.length
+          ? r.messages
+          : [
+              { role: "user", content: text },
+              { role: "assistant", content: r.answer, citations: r.citations },
+            ],
+      );
+      const flags = [
+        r.mock ? "MOCK" : "LIVE",
+        r.blocked ? "BLOCKED" : null,
+        r.source || null,
+      ].filter(Boolean);
+      setMeta(flags.join(" · "));
+    } catch (err) {
+      setError(String(err));
     } finally {
       setBusy(false);
     }
+  }
+
+  function resetChat() {
+    setSessionId(null);
+    setMessages([]);
+    setMeta("");
+    setError("");
   }
 
   return (
@@ -32,21 +90,91 @@ export default function ChatPage() {
       <Nav />
       <section className="hero">
         <h1>Text Generation / RAG</h1>
-        <p>社内チャット・FAQ・文書検索向け。Knowledge Base（または samples/）を根拠に回答します。</p>
+        <p>
+          マルチターン会話・ユースケース切替・根拠引用付き。文書は「Documents」から追加できます。
+        </p>
       </section>
-      <section className="panel wide">
+
+      <section className="panel wide chat-shell">
         <div className="controls">
           <select value={mode} onChange={(e) => setMode(e.target.value as "rag" | "text")}>
             <option value="rag">RAG（文書検索）</option>
             <option value="text">Text Generation</option>
           </select>
-          <button type="button" disabled={busy} onClick={run}>
-            実行
+          <select value={useCase} onChange={(e) => setUseCase(e.target.value)}>
+            {cases.map((c) => (
+              <option key={c.id} value={c.id}>
+                {c.label}
+              </option>
+            ))}
+          </select>
+          <button type="button" className="btn-ghost" onClick={resetChat}>
+            新規セッション
           </button>
+          {meta ? <span className="badge">{meta}</span> : null}
         </div>
-        <textarea value={q} onChange={(e) => setQ(e.target.value)} />
-        {out && <pre className="pre">{out}</pre>}
+
+        <div className="chat-thread" aria-live="polite">
+          {messages.length === 0 ? (
+            <p className="muted chat-empty">
+              例: 「有給休暇の申請手順は？」「秘密保持条項の確認ポイントは？」
+            </p>
+          ) : null}
+          {messages.map((m, i) => (
+            <article
+              key={`${m.role}-${i}-${m.created_at || ""}`}
+              className={`chat-bubble ${m.role === "user" ? "is-user" : "is-assistant"}`}
+            >
+              <header>{m.role === "user" ? "あなた" : "アシスタント"}</header>
+              <div className="chat-content">{m.content}</div>
+              {m.role === "assistant" && m.citations?.length ? (
+                <CitationList citations={m.citations} />
+              ) : null}
+            </article>
+          ))}
+          {busy ? <p className="muted">回答生成中…</p> : null}
+          <div ref={bottomRef} />
+        </div>
+
+        {error ? <p className="error-banner">{error}</p> : null}
+
+        <form className="chat-composer" onSubmit={send}>
+          <textarea
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder="質問を入力（Enter+Ctrl で送信）"
+            rows={3}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                void send();
+              }
+            }}
+          />
+          <button type="submit" disabled={busy || !q.trim()}>
+            送信
+          </button>
+        </form>
       </section>
     </main>
+  );
+}
+
+function CitationList({ citations }: { citations: Citation[] }) {
+  return (
+    <div className="cite-list">
+      <p className="cite-label">根拠</p>
+      {citations.map((c, i) => (
+        <div key={c.id || i} className="cite-card">
+          <div className="cite-head">
+            <strong>{c.source || `出典 ${i + 1}`}</strong>
+            {typeof c.score === "number" ? (
+              <span className="cite-score">{(c.score * 100).toFixed(0)}%</span>
+            ) : null}
+          </div>
+          <p>{c.text}</p>
+        </div>
+      ))}
+    </div>
   );
 }

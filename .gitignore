@@ -33,6 +33,7 @@ terraform/*.tfvars
 # Data / uploads
 data/uploads/
 data/cache/
+backend/data/
 *.pdf
 !samples/**/*.md
 

@@ -1,18 +1,27 @@
 from __future__ import annotations
 
 from typing import Any, Optional
+from uuid import uuid4
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from src.services.agents import invoke_agent
 from src.services.bedrock_embed import embed_texts
 from src.services.bedrock_image import decode_preview_data_url, generate_image
 from src.services.bedrock_text import generate_text
+from src.services.documents import delete_document, ingest_text, list_documents
 from src.services.evaluation import list_evaluations, run_model_evaluation
 from src.services.guardrails import apply_guardrails
 from src.services.prompts import get_prompt, list_prompts, render_prompt, seed_default_prompts, upsert_prompt
 from src.services.rag import rag_answer, retrieve_knowledge_base
+from src.services.sessions import (
+    append_message,
+    create_session,
+    get_session,
+    history_for_rag,
+    list_sessions,
+)
 
 router = APIRouter(prefix="/api", tags=["ai"])
 
@@ -37,6 +46,7 @@ class EmbedRequest(BaseModel):
 
 class GuardRequest(BaseModel):
     text: str
+    source: str = "OUTPUT"
 
 
 class PromptUpsert(BaseModel):
@@ -54,6 +64,29 @@ class PromptRender(BaseModel):
 class RagRequest(BaseModel):
     query: str
     use_case: str = "document_search"
+    top_k: int = 5
+    session_id: Optional[str] = None
+    apply_guardrail: bool = True
+
+
+class ChatRequest(BaseModel):
+    message: str
+    use_case: str = "document_search"
+    mode: str = "rag"  # rag | text
+    session_id: Optional[str] = None
+    system: Optional[str] = None
+    apply_guardrail: bool = True
+
+
+class SessionCreate(BaseModel):
+    use_case: str = "document_search"
+    title: Optional[str] = None
+
+
+class DocIngest(BaseModel):
+    filename: str = "note.md"
+    content: str
+    content_type: str = "text/markdown"
 
 
 class AgentRequest(BaseModel):
@@ -86,7 +119,7 @@ def embedding(body: EmbedRequest):
 
 @router.post("/guardrails/apply")
 def guardrails(body: GuardRequest):
-    return apply_guardrails(body.text)
+    return apply_guardrails(body.text, source=body.source)
 
 
 @router.get("/prompts")
@@ -136,12 +169,145 @@ def evaluation_list():
 
 @router.post("/rag/query")
 def rag_query(body: RagRequest):
-    return rag_answer(body.query, use_case=body.use_case)
+    hist = history_for_rag(body.session_id)
+    out = rag_answer(
+        body.query,
+        use_case=body.use_case,
+        top_k=body.top_k,
+        history=hist,
+        apply_guardrail=body.apply_guardrail,
+    )
+    if body.session_id:
+        append_message(body.session_id, role="user", content=body.query, use_case=body.use_case)
+        append_message(
+            body.session_id,
+            role="assistant",
+            content=out.get("answer") or "",
+            citations=out.get("citations") or [],
+            meta={"blocked": out.get("blocked"), "mock": out.get("mock")},
+            use_case=body.use_case,
+        )
+        out["session_id"] = body.session_id
+    return out
 
 
 @router.post("/rag/retrieve")
 def rag_retrieve(body: RagRequest):
-    return retrieve_knowledge_base(body.query)
+    return retrieve_knowledge_base(body.query, top_k=body.top_k)
+
+
+@router.post("/chat")
+def chat(body: ChatRequest):
+    """Multi-turn chat: creates session if needed, keeps history for RAG context."""
+    sid = body.session_id or create_session(use_case=body.use_case)["session_id"]
+    append_message(sid, role="user", content=body.message, use_case=body.use_case)
+
+    if body.mode == "text":
+        hist = history_for_rag(sid)
+        ctx = "\n".join(f"{h['role']}: {h['content']}" for h in hist[:-1][-6:])
+        prompt = f"{ctx}\nuser: {body.message}" if ctx else body.message
+        gen = generate_text(
+            prompt,
+            system=body.system or "丁寧な日本語で回答してください。",
+            apply_guardrail=body.apply_guardrail,
+        )
+        answer = gen.get("text") or ""
+        cites: list[Any] = []
+        meta = {"mode": "text", "mock": gen.get("mock")}
+    else:
+        hist = history_for_rag(sid)
+        # exclude the user message we just appended from being duplicated in history
+        hist_prior = hist[:-1] if hist and hist[-1].get("role") == "user" else hist
+        out = rag_answer(
+            body.message,
+            use_case=body.use_case,
+            history=hist_prior,
+            apply_guardrail=body.apply_guardrail,
+        )
+        answer = out.get("answer") or ""
+        cites = out.get("citations") or []
+        meta = {
+            "mode": "rag",
+            "mock": out.get("mock"),
+            "blocked": out.get("blocked"),
+            "source": out.get("source"),
+        }
+
+    append_message(
+        sid,
+        role="assistant",
+        content=answer,
+        citations=cites,
+        meta=meta,
+        use_case=body.use_case,
+    )
+    sess = get_session(sid)
+    return {
+        "session_id": sid,
+        "answer": answer,
+        "citations": cites,
+        "messages": (sess or {}).get("messages") or [],
+        **meta,
+        "use_case": body.use_case,
+    }
+
+
+@router.post("/sessions")
+def sessions_create(body: SessionCreate):
+    return create_session(use_case=body.use_case, title=body.title)
+
+
+@router.get("/sessions")
+def sessions_list():
+    return {"items": list_sessions()}
+
+
+@router.get("/sessions/{session_id}")
+def sessions_get(session_id: str):
+    sess = get_session(session_id)
+    if not sess:
+        raise HTTPException(404, "session not found")
+    return sess
+
+
+@router.get("/documents")
+def documents_list():
+    return {"items": list_documents()}
+
+
+@router.post("/documents")
+def documents_create(body: DocIngest):
+    if not body.content.strip():
+        raise HTTPException(400, "content is empty")
+    return ingest_text(
+        filename=body.filename,
+        content=body.content,
+        content_type=body.content_type,
+    )
+
+
+@router.post("/documents/upload")
+async def documents_upload(file: UploadFile = File(...)):
+    raw = await file.read()
+    try:
+        text = raw.decode("utf-8")
+    except UnicodeDecodeError:
+        text = raw.decode("cp932", errors="ignore")
+    if not text.strip():
+        raise HTTPException(400, "empty or unsupported file")
+    name = file.filename or f"upload-{uuid4().hex[:8]}.txt"
+    return ingest_text(
+        filename=name,
+        content=text,
+        content_type=file.content_type or "text/plain",
+    )
+
+
+@router.delete("/documents/{document_id}")
+def documents_delete(document_id: str):
+    if not delete_document(document_id):
+        raise HTTPException(404, "document not found")
+    return {"ok": True, "document_id": document_id}
 
 
 @router.post("/agents/invoke")

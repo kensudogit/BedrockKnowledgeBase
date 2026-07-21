@@ -41,18 +41,25 @@ def mock_image(prompt: str) -> dict[str, Any]:
 
 
 def mock_embed(texts: list[str], dim: int = 64) -> dict[str, Any]:
+    """Char n-gram hashing — better local similarity than whole-string SHA alone."""
     vectors = []
     for t in texts:
-        h = hashlib.sha256(t.encode("utf-8")).digest()
-        vals = []
+        vals = [0.0] * dim
+        s = t.lower()
+        # unigrams + bigrams + trigrams
+        grams = list(s) + [s[i : i + 2] for i in range(len(s) - 1)] + [s[i : i + 3] for i in range(len(s) - 2)]
+        for g in grams[:800]:
+            h = hashlib.md5(g.encode("utf-8")).digest()
+            idx = h[0] % dim
+            sign = 1.0 if h[1] % 2 == 0 else -1.0
+            vals[idx] += sign
+        # blend whole-hash bias for stability
+        wh = hashlib.sha256(s.encode("utf-8")).digest()
         for i in range(dim):
-            # deterministic pseudo-embedding
-            b = h[i % len(h)]
-            vals.append((b / 255.0) * 2 - 1)
-        # L2 normalize
+            vals[i] += ((wh[i % len(wh)] / 255.0) * 2 - 1) * 0.15
         norm = math.sqrt(sum(v * v for v in vals)) or 1.0
         vectors.append([round(v / norm, 6) for v in vals])
-    return {"embeddings": vectors, "dimensions": dim, "model": "mock-embed", "mock": True}
+    return {"embeddings": vectors, "dimensions": dim, "model": "mock-embed-ngram", "mock": True}
 
 
 def mock_guardrail(text: str) -> dict[str, Any]:
