@@ -147,8 +147,40 @@ const deployFeatured: FeaturedBlock = {
   items: [
     "必須 — DATABASE_URL · OPENAI_API_KEY · JWT_SECRET · INTERNAL_API_URL=http://127.0.0.1:8180",
     "推奨 — APP_ENV=production · CORS_ORIGINS=* · DYNAMODB_ENDPOINT=（空）· USE_BEDROCK_MOCK=true",
+    "GCP 任意 — USE_VERTEX_MOCK=true（既定）で未設定デモ可 / 本番は GCP_PROJECT_ID + GCP_ACCESS_TOKEN",
     "禁止 — Suggested の localhost:3010 / :8290 / DynamoDB Local を本番に足さない",
-    "確認 — /health の database_ok · openai_configured · llm_provider · jwt_configured",
+    "確認 — /health の database_ok · openai_configured · gcp_configured · vertex_ready · llm_provider",
+  ],
+};
+
+const gcpFeatured: FeaturedBlock = {
+  badge: "GCP",
+  title: "Vertex AI / GCS（/gcp）",
+  body:
+    "GCP 未設定でも USE_VERTEX_MOCK=true（既定）ならモックでテキスト生成とローカル相当の GCS アップロードができます。本番 Vertex はプロジェクト ID とアクセストークンを設定します。",
+  variant: "rag",
+  items: [
+    "画面 — /gcp →「生成」で Vertex テキスト、「アップロード」で GCS",
+    "状態 — GET /api/gcp/status（mode=mock|live · hint）",
+    "API — POST /api/gcp/text · POST /api/gcp/storage/upload · GET /api/gcp/storage/uploads",
+    "モック — GCP_PROJECT_ID なしでも 503 にならない（USE_VERTEX_MOCK=true）",
+    "本番 — USE_VERTEX_MOCK=false · GCP_PROJECT_ID · GCP_REGION · GCP_ACCESS_TOKEN · 任意 GCS_DOCUMENTS_BUCKET",
+    "チャット経路 — PREFER_VERTEX=true かつ GCP_PROJECT_ID 設定時に llm_provider=vertex",
+  ],
+};
+
+const creditFeatured: FeaturedBlock = {
+  badge: "Credit",
+  title: "信用情報管理（/credit）",
+  body:
+    "本人登録・契約・同意・照会・スコア・監査ログのデモです。本番の CIC/JICC 連携ではありません。照会は有効な同意が必須です。一覧は氏名・電話をマスク表示します。",
+  variant: "eval",
+  items: [
+    "画面 — /credit で本人登録 → 契約追加 → 同意＋照会 → スコアレポート",
+    "API — /api/credit/subjects · …/contracts · …/consents · …/inquiries · …/report · /api/credit/audit",
+    "同意 — POST …/consents（purpose=credit_inquiry）後に照会可能",
+    "スコア — 利用率・延滞・ハード照会などから 300〜850 のデモスコア",
+    "監査 — 登録/契約/同意/照会/レポート閲覧を audit に記録",
   ],
 };
 
@@ -279,6 +311,30 @@ const guideSections: readonly GuideSection[] = [
           "任意 — REQUIRE_API_KEY=true で X-API-Key または JWT を要求",
         ],
       },
+      {
+        title: "⑥ GCP / Vertex AI（/gcp）",
+        body: "Vertex テキストと GCS アップロードを試します。未設定でもモックで動作確認できます。",
+        items: [
+          "① /gcp を開き、接続状態の mode が mock または live であること",
+          "②「生成」— モック時は provider=vertex · mock=true（GCP_PROJECT_ID 不要）",
+          "③「アップロード」— gs://mock-gcs/... 相当の URI と履歴が表示される",
+          "④ 本番切替 — Railway に GCP_PROJECT_ID · GCP_ACCESS_TOKEN · USE_VERTEX_MOCK=false を設定して Deploy",
+          "⑤ 任意 — GCS_DOCUMENTS_BUCKET · PREFER_VERTEX=true（Chat も Vertex 経路）",
+          "⑥ トラブル — 旧デプロイで 503 GCP_PROJECT_ID is not set → 最新ビルドへ更新",
+        ],
+      },
+      {
+        title: "⑦ 信用情報管理（/credit）",
+        body: "本人・契約・同意・照会・スコアの一連フローです（デモ用）。",
+        items: [
+          "① 本人登録 — 氏名・生年月日・電話（一覧はマスク表示）",
+          "② 契約追加 — 限度額・残高・支払状況を登録",
+          "③ 同意＋照会 — 同意なし照会は 403、同意後に hard/soft 照会を記録",
+          "④ レポート — score / band / reasons と契約・照会一覧",
+          "⑤ 監査ログ — subject.register · consent.grant · inquiry.record · report.view",
+          "注意 — 実在の信用情報機関 API ではない。個人情報はデモデータのみ使用",
+        ],
+      },
     ],
   },
   {
@@ -294,6 +350,7 @@ const guideSections: readonly GuideSection[] = [
           "INTERNAL_API_URL=http://127.0.0.1:8180 — コンテナ内 API（:8290 禁止）",
           "APP_ENV=production · CORS_ORIGINS=* · DYNAMODB_ENDPOINT=（空）",
           "USE_BEDROCK_MOCK=true — OpenAI テキスト + 画像モックの推奨構成",
+          "任意 GCP — USE_VERTEX_MOCK=true（既定・/gcp デモ）または GCP_PROJECT_ID + GCP_ACCESS_TOKEN",
         ],
       },
       {
@@ -302,9 +359,10 @@ const guideSections: readonly GuideSection[] = [
         items: [
           "openai — USE_BEDROCK_MOCK=true + OPENAI_API_KEY（推奨の Railway 構成）",
           "bedrock — USE_BEDROCK_MOCK=false + AWS_ACCESS_KEY_ID / SECRET + REGION",
-          "vertex — GCP_PROJECT_ID +（任意）PREFER_VERTEX=true · USE_VERTEX_MOCK=false + GCP_ACCESS_TOKEN",
-          "mock — どれも未設定（ローカル体験用）",
-          "GCP UI — /gcp · 信用情報 — /credit（同意必須の照会・スコア）",
+          "vertex — GCP_PROJECT_ID + PREFER_VERTEX=true（モック可）または USE_VERTEX_MOCK=false + GCP_ACCESS_TOKEN",
+          "mock — Bedrock/OpenAI/Vertex プロジェクト未設定",
+          "/gcp は llm_provider と独立 — USE_VERTEX_MOCK=true なら常にモック生成可",
+          "信用情報 — /credit（Variables 不要・永続は data/ops）",
           "画像・埋め込みの実呼び出しは Bedrock 側の設定が必要",
         ],
       },
@@ -353,7 +411,7 @@ const L = {
   collapse: "閉じる",
   heroTitle: "Bedrock Knowledge Base 基盤",
   heroLead:
-    "Bedrock / OpenAI を中核に Text·RAG·Image·Lab·Ops を一体提供。Railway Variables（DATABASE_URL · OPENAI_API_KEY · JWT_SECRET）で本番稼働し、必要に応じて Knowledge Bases / Agents へ拡張。",
+    "Bedrock / OpenAI / Vertex を中核に Text·RAG·Image·Lab·Ops·GCP·信用情報を一体提供。Railway Variables（DATABASE_URL · OPENAI_API_KEY · JWT_SECRET）で本番稼働し、GCP はモックまたは Vertex 本番へ拡張。",
   stackLabel: "Tech stack",
   diagramLabel: "Service topology",
   workflowLabel: "詳細利用手順",
@@ -595,6 +653,8 @@ export function UsageGuidePanel() {
           <FeaturedSection block={promptFeatured} />
           <FeaturedSection block={evalFeatured} />
           <FeaturedSection block={agentFeatured} />
+          <FeaturedSection block={gcpFeatured} />
+          <FeaturedSection block={creditFeatured} />
           <FeaturedSection block={deployFeatured} />
 
           <p className={styles.scrollHint}>{L.scrollHint}</p>

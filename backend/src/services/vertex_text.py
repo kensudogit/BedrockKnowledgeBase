@@ -18,16 +18,24 @@ def generate_text_vertex(
     temperature: float = 0.3,
 ) -> dict[str, Any]:
     settings = get_settings()
-    if not settings.gcp_configured:
-        raise RuntimeError("GCP_PROJECT_ID is not set")
-
-    if settings.use_vertex_mock or not resolve_access_token():
+    # Unconfigured / mock: always succeed so /gcp UI works without Railway GCP vars.
+    if settings.use_vertex_mock or not settings.gcp_configured or not resolve_access_token():
+        if not settings.use_vertex_mock and not settings.gcp_configured:
+            raise RuntimeError(
+                "GCP_PROJECT_ID is not set (set USE_VERTEX_MOCK=true for demo, "
+                "or configure GCP_PROJECT_ID + GCP_ACCESS_TOKEN)"
+            )
         out = mock_text(prompt, system=system)
         out["provider"] = "vertex"
         out["model"] = settings.vertex_text_model_id
         out["mock"] = True
-        out["gcp_project"] = settings.gcp_project_id
+        out["gcp_project"] = settings.gcp_project_id or "mock-gcp"
         out["gcp_region"] = settings.gcp_region
+        out["note"] = (
+            "Vertex mock response"
+            if settings.use_vertex_mock or not settings.gcp_configured
+            else "No GCP access token; fell back to mock"
+        )
         return out
 
     token = resolve_access_token()

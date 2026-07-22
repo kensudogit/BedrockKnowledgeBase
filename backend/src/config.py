@@ -136,11 +136,11 @@ class Settings(BaseSettings):
 
     @property
     def vertex_ready(self) -> bool:
-        """Vertex path available (mock or real token/credentials)."""
-        if not self.gcp_configured:
-            return False
+        """Vertex path available: mock always, or real when project + token/creds."""
         if self.use_vertex_mock:
             return True
+        if not self.gcp_configured:
+            return False
         return bool(self.gcp_access_token.strip() or self.google_application_credentials.strip())
 
     @property
@@ -155,11 +155,12 @@ class Settings(BaseSettings):
         """Provider used for text generation (chat / RAG answer)."""
         if not self.use_bedrock_mock and self.bedrock_credentials_configured:
             return "bedrock"
-        if self.prefer_vertex and self.vertex_ready:
+        # Prefer Vertex for chat only when a project is configured (mock or live).
+        if self.prefer_vertex and self.gcp_configured and self.vertex_ready:
             return "vertex"
         if self.openai_configured:
             return "openai"
-        if self.vertex_ready:
+        if self.gcp_configured and self.vertex_ready:
             return "vertex"
         return "mock"
 

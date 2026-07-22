@@ -58,7 +58,17 @@ export default function GcpPage() {
       <Nav />
       <section className="hero">
         <h1>GCP / Vertex AI</h1>
-        <p>Vertex テキスト生成と GCS 文書アップロード（未設定時はモック）。</p>
+        <p>
+          Vertex テキスト生成と GCS 文書アップロード。GCP_PROJECT_ID 未設定でも{" "}
+          <code>USE_VERTEX_MOCK=true</code>（既定）ならモックで動作します。
+        </p>
+        {status?.hint ? <p className="muted">{String(status.hint)}</p> : null}
+        {status?.mode ? (
+          <p className="muted">
+            mode: <strong>{String(status.mode)}</strong>
+            {status.configured ? "" : " · project 未設定（モック可）"}
+          </p>
+        ) : null}
       </section>
 
       {error ? <p className="error-banner">{error}</p> : null}
