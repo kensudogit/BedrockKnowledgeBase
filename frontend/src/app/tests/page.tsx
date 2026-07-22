@@ -37,6 +37,7 @@ type Run = {
   total?: number;
   duration_ms?: number;
   suites?: SuiteResult[];
+  layout?: { backend?: string; frontend?: string };
 };
 
 export default function TestsPage() {
@@ -120,7 +121,17 @@ export default function TestsPage() {
             最新を再読込
           </button>
         </div>
-        {error && <p style={{ color: "#fca5a5", marginTop: 12 }}>エラー: {error}</p>}
+        {error && (
+          <p style={{ color: "#fca5a5", marginTop: 12, whiteSpace: "pre-wrap" }}>
+            エラー: {error}
+          </p>
+        )}
+        {run?.status === "error" && (
+          <p style={{ color: "#fcd34d", marginTop: 8, fontSize: 14 }}>
+            スイート実行は完了しましたが、環境不足などでテスト件数 0 です。各スイートの error
+            を確認してください（Docker では pytest 同梱・frontend は /app/frontend）。
+          </p>
+        )}
       </section>
 
       <section className="grid">
@@ -155,13 +166,19 @@ export default function TestsPage() {
               <div>
                 {s.passed}/{s.total} passed · {s.failed} failed · {s.duration_ms} ms
               </div>
-              {s.error && (
+              {s.error ? (
                 <pre style={{ whiteSpace: "pre-wrap", color: "#fca5a5", fontSize: 12 }}>
                   {s.error}
                 </pre>
-              )}
+              ) : null}
             </div>
           ))}
+          {run?.layout && (
+            <p style={{ fontSize: 12, opacity: 0.75, marginTop: 8 }}>
+              layout: backend={String((run.layout as Record<string, string>).backend)} · frontend=
+              {String((run.layout as Record<string, string>).frontend)}
+            </p>
+          )}
         </article>
 
         <article className="panel">

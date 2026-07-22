@@ -6,26 +6,80 @@ import os
 import subprocess
 import sys
 import time
+import traceback
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
 from uuid import uuid4
 
-from src.services.persist import append, load
+from src.services.persist import append, load, rewrite
 
 _STORE = "test_runs"
-_ROOT = Path(__file__).resolve().parents[3]  # BedrockKnowledgeBase/
-_BACKEND = _ROOT / "backend"
-_FRONTEND = _ROOT / "frontend"
 _MAX_HISTORY = 40
+
+
+def _resolve_layout() -> tuple[Path, Path]:
+    """
+    Support both layouts:
+      - Local:  <repo>/backend/src/services/test_runner.py  + <repo>/frontend
+      - Docker: /app/src/services/test_runner.py            + /app/frontend
+    """
+    here = Path(__file__).resolve()
+    app_or_backend = here.parents[2]  # .../backend or /app
+    sibling_frontend = app_or_backend.parent / "frontend"
+    nested_frontend = app_or_backend / "frontend"
+
+    if nested_frontend.is_dir() and (nested_frontend / "package.json").exists():
+        return app_or_backend, nested_frontend
+    if sibling_frontend.is_dir() and (sibling_frontend / "package.json").exists():
+        return app_or_backend, sibling_frontend
+    # Fallbacks for partial images
+    if (app_or_backend / "tests").is_dir():
+        return app_or_backend, nested_frontend
+    return app_or_backend, sibling_frontend
+
+
+_BACKEND, _FRONTEND = _resolve_layout()
 
 
 def _now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
-def _collect_pytest(suite_filter: str | None = None) -> dict[str, Any]:
+def _empty_suite(suite: str, runner: str, error: str, duration_ms: int = 0) -> dict[str, Any]:
+    return {
+        "suite": suite,
+        "runner": runner,
+        "exit_code": -1,
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "total": 0,
+        "duration_ms": duration_ms,
+        "tests": [],
+        "error": error,
+    }
+
+
+def _collect_pytest() -> dict[str, Any]:
     """Run pytest in-process and collect per-test results."""
+    tests_dir = _BACKEND / "tests"
+    if not tests_dir.is_dir():
+        return _empty_suite(
+            "python",
+            "pytest",
+            f"tests directory not found: {tests_dir} (backend={_BACKEND})",
+        )
+
+    try:
+        import pytest
+    except ImportError:
+        return _empty_suite(
+            "python",
+            "pytest",
+            "pytest is not installed in this image — add pytest to requirements-railway.txt",
+        )
+
     results: list[dict[str, Any]] = []
 
     class _Plugin:
@@ -35,8 +89,6 @@ def _collect_pytest(suite_filter: str | None = None) -> dict[str, Any]:
             if report.when == "setup" and report.passed:
                 return
             node = str(report.nodeid)
-            if suite_filter and suite_filter not in node:
-                return
             entry: dict[str, Any] = {
                 "id": node,
                 "name": node.split("::")[-1] if "::" in node else node,
@@ -49,19 +101,26 @@ def _collect_pytest(suite_filter: str | None = None) -> dict[str, Any]:
                 entry["message"] = str(report.longrepr)[:2000]
             results.append(entry)
 
-    import pytest
-
     start = time.perf_counter()
-    code = pytest.main(
-        [
-            str(_BACKEND / "tests"),
-            "-q",
-            "--tb=line",
-            "-p",
-            "no:cacheprovider",
-        ],
-        plugins=[_Plugin()],
-    )
+    try:
+        code = pytest.main(
+            [
+                str(tests_dir),
+                "-q",
+                "--tb=line",
+                "-p",
+                "no:cacheprovider",
+            ],
+            plugins=[_Plugin()],
+        )
+    except Exception as exc:
+        return _empty_suite(
+            "python",
+            "pytest",
+            f"pytest crashed: {exc}\n{traceback.format_exc()[-1500:]}",
+            duration_ms=int((time.perf_counter() - start) * 1000),
+        )
+
     elapsed = int((time.perf_counter() - start) * 1000)
     passed = sum(1 for r in results if r["status"] == "passed")
     failed = sum(1 for r in results if r["status"] == "failed")
@@ -76,25 +135,20 @@ def _collect_pytest(suite_filter: str | None = None) -> dict[str, Any]:
         "total": len(results),
         "duration_ms": elapsed,
         "tests": results,
+        "backend_root": str(_BACKEND),
+        "tests_dir": str(tests_dir),
     }
 
 
 def _collect_vitest() -> dict[str, Any]:
-    """Run vitest via npm; graceful skip if unavailable (e.g. slim prod image)."""
+    """Run vitest via npm; graceful skip if unavailable."""
     pkg = _FRONTEND / "package.json"
     if not pkg.exists():
-        return {
-            "suite": "frontend",
-            "runner": "vitest",
-            "exit_code": -1,
-            "passed": 0,
-            "failed": 0,
-            "skipped": 0,
-            "total": 0,
-            "duration_ms": 0,
-            "tests": [],
-            "error": "frontend package.json not found",
-        }
+        return _empty_suite(
+            "frontend",
+            "vitest",
+            f"frontend package.json not found at {_FRONTEND} (resolved backend={_BACKEND})",
+        )
 
     out_file = _FRONTEND / ".test-results.json"
     if out_file.exists():
@@ -105,9 +159,10 @@ def _collect_vitest() -> dict[str, Any]:
 
     start = time.perf_counter()
     env = {**os.environ, "CI": "1", "FORCE_COLOR": "0"}
+    npm_cmd = ["npm", "run", "test:json"]
     try:
         proc = subprocess.run(
-            ["npm", "run", "test:json"],
+            npm_cmd,
             cwd=str(_FRONTEND),
             capture_output=True,
             text=True,
@@ -116,31 +171,9 @@ def _collect_vitest() -> dict[str, Any]:
             shell=os.name == "nt",
         )
     except FileNotFoundError:
-        return {
-            "suite": "frontend",
-            "runner": "vitest",
-            "exit_code": -1,
-            "passed": 0,
-            "failed": 0,
-            "skipped": 0,
-            "total": 0,
-            "duration_ms": 0,
-            "tests": [],
-            "error": "npm not available",
-        }
+        return _empty_suite("frontend", "vitest", "npm not available in this container")
     except subprocess.TimeoutExpired:
-        return {
-            "suite": "frontend",
-            "runner": "vitest",
-            "exit_code": -1,
-            "passed": 0,
-            "failed": 0,
-            "skipped": 0,
-            "total": 0,
-            "duration_ms": 180000,
-            "tests": [],
-            "error": "vitest timed out",
-        }
+        return _empty_suite("frontend", "vitest", "vitest timed out", duration_ms=180000)
 
     elapsed = int((time.perf_counter() - start) * 1000)
     tests: list[dict[str, Any]] = []
@@ -148,7 +181,6 @@ def _collect_vitest() -> dict[str, Any]:
         try:
             payload = json.loads(out_file.read_text(encoding="utf-8"))
             for tfile in payload.get("testResults") or []:
-                fpath = tfile.get("name") or tfile.get("assertionResults", [{}])
                 file_name = str(tfile.get("name") or "unknown")
                 for assertion in tfile.get("assertionResults") or []:
                     status = assertion.get("status") or "failed"
@@ -172,32 +204,25 @@ def _collect_vitest() -> dict[str, Any]:
                     )
         except Exception as exc:
             return {
-                "suite": "frontend",
-                "runner": "vitest",
-                "exit_code": proc.returncode,
-                "passed": 0,
-                "failed": 0,
-                "skipped": 0,
-                "total": 0,
-                "duration_ms": elapsed,
-                "tests": [],
-                "error": f"failed to parse vitest json: {exc}",
+                **_empty_suite(
+                    "frontend",
+                    "vitest",
+                    f"failed to parse vitest json: {exc}",
+                    duration_ms=elapsed,
+                ),
                 "stderr": (proc.stderr or "")[-1500:],
+                "exit_code": proc.returncode,
             }
     else:
-        # vitest not installed or script missing
         err = (proc.stderr or proc.stdout or "")[-1500:]
         return {
-            "suite": "frontend",
-            "runner": "vitest",
+            **_empty_suite(
+                "frontend",
+                "vitest",
+                err or "vitest json output missing — ensure vitest is installed (npm ci)",
+                duration_ms=elapsed,
+            ),
             "exit_code": proc.returncode,
-            "passed": 0,
-            "failed": 0,
-            "skipped": 0,
-            "total": 0,
-            "duration_ms": elapsed,
-            "tests": [],
-            "error": err or "vitest json output missing — run npm install in frontend",
         }
 
     passed = sum(1 for t in tests if t["status"] == "passed")
@@ -213,53 +238,78 @@ def _collect_vitest() -> dict[str, Any]:
         "total": len(tests),
         "duration_ms": elapsed,
         "tests": tests,
+        "frontend_root": str(_FRONTEND),
     }
 
 
 def run_tests(suites: list[str] | None = None) -> dict[str, Any]:
     wanted = {s.lower() for s in (suites or ["python", "frontend"])}
+    # Refresh layout in case of unusual working directories
+    global _BACKEND, _FRONTEND
+    _BACKEND, _FRONTEND = _resolve_layout()
+
     suite_results: list[dict[str, Any]] = []
     if "python" in wanted:
-        # Ensure mock mode for safety
         os.environ.setdefault("USE_BEDROCK_MOCK", "true")
-        os.environ.setdefault("DYNAMODB_ENDPOINT", "")
+        # Do not force-clear DYNAMODB_ENDPOINT on Railway if already empty
         cwd = os.getcwd()
         try:
             os.chdir(_BACKEND)
             if str(_BACKEND) not in sys.path:
                 sys.path.insert(0, str(_BACKEND))
             suite_results.append(_collect_pytest())
+        except Exception as exc:
+            suite_results.append(
+                _empty_suite("python", "pytest", f"{exc}\n{traceback.format_exc()[-1200:]}")
+            )
         finally:
             os.chdir(cwd)
     if "frontend" in wanted:
-        suite_results.append(_collect_vitest())
+        try:
+            suite_results.append(_collect_vitest())
+        except Exception as exc:
+            suite_results.append(
+                _empty_suite("frontend", "vitest", f"{exc}\n{traceback.format_exc()[-1200:]}")
+            )
 
-    passed = sum(s.get("passed", 0) for s in suite_results)
-    failed = sum(s.get("failed", 0) for s in suite_results)
-    skipped = sum(s.get("skipped", 0) for s in suite_results)
-    total = sum(s.get("total", 0) for s in suite_results)
+    passed = sum(int(s.get("passed") or 0) for s in suite_results)
+    failed = sum(int(s.get("failed") or 0) for s in suite_results)
+    skipped = sum(int(s.get("skipped") or 0) for s in suite_results)
+    total = sum(int(s.get("total") or 0) for s in suite_results)
+    has_errors = any(s.get("error") for s in suite_results)
+    if failed > 0:
+        status = "failed"
+    elif total > 0:
+        status = "passed"
+    elif has_errors:
+        status = "error"
+    else:
+        status = "empty"
+
     run = {
         "run_id": str(uuid4()),
         "created_at": _now(),
-        "status": "passed" if failed == 0 and total > 0 else ("failed" if failed else "empty"),
+        "status": status,
         "passed": passed,
         "failed": failed,
         "skipped": skipped,
         "total": total,
-        "duration_ms": sum(s.get("duration_ms", 0) for s in suite_results),
+        "duration_ms": sum(int(s.get("duration_ms") or 0) for s in suite_results),
         "suites": suite_results,
+        "layout": {"backend": str(_BACKEND), "frontend": str(_FRONTEND)},
     }
-    append(_STORE, run)
+    try:
+        append(_STORE, run)
+    except Exception:
+        # Still return results even if persistence fails
+        run["persist_error"] = "failed to append test_runs"
     return run
 
 
 def list_runs(limit: int = 20) -> list[dict[str, Any]]:
     items = load(_STORE)
     items = sorted(items, key=lambda x: x.get("created_at") or "", reverse=True)
-    # trim store
     if len(items) > _MAX_HISTORY:
-        from src.services.persist import rewrite
-
         rewrite(_STORE, items[:_MAX_HISTORY])
     return [
         {

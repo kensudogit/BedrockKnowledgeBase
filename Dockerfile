@@ -29,6 +29,9 @@ COPY samples/ /app/samples/
 COPY backend/datasets/ /app/datasets/
 COPY --from=frontend-builder /app/frontend /app/frontend
 
+# Ensure test suites are present for in-container /api/tests/run
+RUN test -d /app/tests && test -f /app/frontend/package.json
+
 COPY start.sh /app/start.sh
 RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
 

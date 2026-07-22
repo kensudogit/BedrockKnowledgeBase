@@ -570,7 +570,10 @@ def tests_run(body: TestRunRequest):
     """Execute pytest + vitest and persist results for the Web Tests page."""
     from src.services.test_runner import run_tests
 
-    return run_tests(body.suites)
+    try:
+        return run_tests(body.suites)
+    except Exception as exc:
+        raise HTTPException(500, f"test runner failed: {exc}") from exc
 
 
 @router.get("/tests/latest")
