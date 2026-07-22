@@ -15,6 +15,8 @@ const links = [
   { href: "/evaluation", label: "Evaluation" },
   { href: "/agents", label: "Agents" },
   { href: "/ops", label: "Ops" },
+  { href: "/gcp", label: "GCP" },
+  { href: "/credit", label: "信用情報" },
   { href: "/tests", label: "Tests" },
 ];
 

@@ -37,15 +37,15 @@ const architectureFeatured: FeaturedBlock = {
   badge: "Architecture",
   title: "Next.js BFF + FastAPI + Bedrock / OpenAI",
   body:
-    "Web は同一オリジンで FastAPI にプロキシ。テキストは Bedrock → OpenAI → モックの順で選択。画像・埋め込み等は Bedrock（未設定時はモック）。秘密情報はサーバー側 Variables のみ。",
+    "Web は同一オリジンで FastAPI にプロキシ。テキストは Bedrock →（任意）Vertex → OpenAI → モックの順で選択。画像・埋め込み等は Bedrock（未設定時はモック）。秘密情報はサーバー側 Variables のみ。",
   variant: "architecture",
   items: [
-    "Next.js — Chat · Lab · Documents · Image · Embedding · Guardrails · Prompts · Evaluation · Agents · Ops",
+    "Next.js — Chat · Lab · Documents · Image · Embedding · Guardrails · Prompts · Evaluation · Agents · Ops · GCP · 信用情報 · Tests",
     "FastAPI :8180（Railway 内部・INTERNAL_API_URL）/ ローカル競合時は :8290",
     "PostgreSQL — Railway DATABASE_URL（スキーマ自動初期化）",
     "DynamoDB — Prompt / Eval（未接続時はメモリフォールバック）",
-    "LLM — Bedrock Runtime または OPENAI_API_KEY（gpt-4o-mini 等）",
-    "/health — llm_provider · database_ok · openai_configured · jwt_configured",
+    "LLM — Bedrock / Vertex AI (GCP) / OPENAI_API_KEY / mock",
+    "/health — llm_provider · gcp_configured · vertex_ready · database_ok · openai_configured",
   ],
 };
 
@@ -158,6 +158,8 @@ const techStack = [
   "PostgreSQL · DynamoDB",
   "Amazon Bedrock",
   "OpenAI API",
+  "Vertex AI · GCS",
+  "信用情報管理",
   "Knowledge Bases",
   "Guardrails · Agents",
   "S3 · Lambda · API GW",
@@ -170,11 +172,12 @@ const archDiagram = `Browser (Enterprise User)
     ▼
 Next.js :PORT (Railway) / :3010 (local)
     ├─ /chat /lab /documents /image /embedding
-    ├─ /guardrails /prompts /evaluation /agents /ops /tests
+    ├─ /guardrails /prompts /evaluation /agents /ops /gcp /credit /tests
     └─ /api/* · /health ──proxy──► FastAPI :8180
-              ├─ LLM: Bedrock  or  OpenAI (OPENAI_API_KEY)
+              ├─ LLM: Bedrock / Vertex / OpenAI / mock
               ├─ Image / Embed: Bedrock  or  mock SVG/vector
               ├─ RAG: Knowledge Bases ← S3  or  samples/
+              ├─ GCS upload · Credit info (consent / inquiry / score)
               ├─ Auth: JWT_SECRET · X-API-Key
               ├─ PostgreSQL ← DATABASE_URL
               └─ DynamoDB or memory (prompts · evals)`;
@@ -193,8 +196,8 @@ const guideSections: readonly GuideSection[] = [
         body: "本パネルは全画面で表示されます。PC ではヘッダーをドラッグして位置を変更でき、▼▲ で折りたたみ可能です。",
         items: [
           "PC — ヘッダーをドラッグで移動 · ▼▲ で開閉 · 位置はブラウザに自動保存",
-          "ナビ — Text/RAG · AI Lab · Documents · Image · … · Ops · Tests",
-          "推奨フロー — ホーム → /chat → /image → /lab → /ops → /tests",
+          "ナビ — Text/RAG · AI Lab · … · Ops · GCP · 信用情報 · Tests",
+          "推奨フロー — ホーム → /chat → /gcp → /credit → /ops → /tests",
           "プレゼン時 — パネルを画面端に寄せ、メイン画面を広く使う",
         ],
       },
@@ -294,12 +297,14 @@ const guideSections: readonly GuideSection[] = [
         ],
       },
       {
-        title: "LLM 切替（OpenAI ↔ Bedrock）",
+        title: "LLM 切替（OpenAI ↔ Bedrock ↔ Vertex）",
         body: "/health の llm_provider で現在の経路を確認します。",
         items: [
           "openai — USE_BEDROCK_MOCK=true + OPENAI_API_KEY（推奨の Railway 構成）",
           "bedrock — USE_BEDROCK_MOCK=false + AWS_ACCESS_KEY_ID / SECRET + REGION",
-          "mock — どちらも未設定（ローカル体験用）",
+          "vertex — GCP_PROJECT_ID +（任意）PREFER_VERTEX=true · USE_VERTEX_MOCK=false + GCP_ACCESS_TOKEN",
+          "mock — どれも未設定（ローカル体験用）",
+          "GCP UI — /gcp · 信用情報 — /credit（同意必須の照会・スコア）",
           "画像・埋め込みの実呼び出しは Bedrock 側の設定が必要",
         ],
       },

@@ -771,3 +771,247 @@ def monitoring_alerts():
 def delivery_status_api():
     return delivery_status()
 
+
+# --- GCP / Vertex / GCS ---
+
+
+class GcpTextRequest(BaseModel):
+    prompt: str
+    system: Optional[str] = None
+    max_tokens: int = 1024
+    temperature: float = 0.3
+    apply_guardrail: bool = True
+
+
+class GcsUploadRequest(BaseModel):
+    filename: str
+    content: str
+    content_type: str = "text/plain"
+    project_id: Optional[str] = None
+
+
+@router.get("/gcp/status")
+def gcp_status_api():
+    from src.gcp_clients import gcp_status
+
+    return gcp_status()
+
+
+@router.post("/gcp/text")
+def gcp_text_generate(body: GcpTextRequest):
+    from src.services.vertex_text import generate_text_vertex
+
+    try:
+        out = generate_text_vertex(
+            body.prompt,
+            system=body.system,
+            max_tokens=body.max_tokens,
+            temperature=body.temperature,
+        )
+    except Exception as exc:
+        raise HTTPException(503, str(exc)) from exc
+    if body.apply_guardrail:
+        from src.config import get_settings
+        from src.services.guardrails import apply_guardrails
+
+        if get_settings().enable_guardrails:
+            gr = apply_guardrails(out["text"])
+            out["guardrail"] = gr
+            if gr.get("action") == "GUARDRAIL_INTERVENED":
+                out["text"] = gr["outputs"][0]["text"]
+    return out
+
+
+@router.post("/gcp/storage/upload")
+def gcp_storage_upload(body: GcsUploadRequest):
+    from src.services.gcs_storage import upload_document
+
+    return upload_document(
+        filename=body.filename,
+        content=body.content,
+        content_type=body.content_type,
+        project_id=body.project_id,
+    )
+
+
+@router.get("/gcp/storage/uploads")
+def gcp_storage_list():
+    from src.services.gcs_storage import list_uploads
+
+    return {"items": list_uploads()}
+
+
+# --- 信用情報管理 ---
+
+
+class CreditSubjectCreate(BaseModel):
+    full_name: str
+    birth_date: str
+    phone: str = ""
+    email: str = ""
+    external_ref: str = ""
+    notes: str = ""
+
+
+class CreditContractCreate(BaseModel):
+    contract_type: str = "credit_card"
+    lender: str
+    credit_limit: int = 0
+    balance: int = 0
+    status: str = "open"
+    opened_on: str = ""
+    payment_status: str = "current"
+    months_delinquent: int = 0
+
+
+class CreditConsentCreate(BaseModel):
+    purpose: str = "credit_inquiry"
+    requester: str
+    channel: str = "web"
+    expires_at: str = ""
+
+
+class CreditInquiryCreate(BaseModel):
+    requester: str
+    purpose: str = "credit_review"
+    inquiry_type: str = "hard"
+    require_consent: bool = True
+
+
+@router.get("/credit/subjects")
+def credit_subjects_list():
+    from src.services.credit_info import list_subjects
+
+    return {"items": list_subjects()}
+
+
+@router.post("/credit/subjects")
+def credit_subjects_create(body: CreditSubjectCreate):
+    from src.services.credit_info import register_subject
+
+    return register_subject(
+        full_name=body.full_name,
+        birth_date=body.birth_date,
+        phone=body.phone,
+        email=body.email,
+        external_ref=body.external_ref,
+        notes=body.notes,
+    )
+
+
+@router.get("/credit/subjects/{subject_id}")
+def credit_subjects_get(subject_id: str, reveal: bool = False):
+    from src.services.credit_info import get_subject
+
+    item = get_subject(subject_id, reveal=reveal)
+    if not item:
+        raise HTTPException(404, "subject not found")
+    return item
+
+
+@router.post("/credit/subjects/{subject_id}/contracts")
+def credit_contracts_add(subject_id: str, body: CreditContractCreate):
+    from src.services.credit_info import add_contract
+
+    try:
+        return add_contract(
+            subject_id=subject_id,
+            contract_type=body.contract_type,
+            lender=body.lender,
+            credit_limit=body.credit_limit,
+            balance=body.balance,
+            status=body.status,
+            opened_on=body.opened_on,
+            payment_status=body.payment_status,
+            months_delinquent=body.months_delinquent,
+        )
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/credit/subjects/{subject_id}/contracts")
+def credit_contracts_list(subject_id: str):
+    from src.services.credit_info import get_subject, list_contracts
+
+    if not get_subject(subject_id):
+        raise HTTPException(404, "subject not found")
+    return {"items": list_contracts(subject_id)}
+
+
+@router.post("/credit/subjects/{subject_id}/consents")
+def credit_consents_add(subject_id: str, body: CreditConsentCreate):
+    from src.services.credit_info import record_consent
+
+    try:
+        return record_consent(
+            subject_id=subject_id,
+            purpose=body.purpose,
+            requester=body.requester,
+            channel=body.channel,
+            expires_at=body.expires_at,
+        )
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/credit/subjects/{subject_id}/consents")
+def credit_consents_list(subject_id: str):
+    from src.services.credit_info import get_subject, list_consents
+
+    if not get_subject(subject_id):
+        raise HTTPException(404, "subject not found")
+    return {"items": list_consents(subject_id)}
+
+
+@router.post("/credit/subjects/{subject_id}/inquiries")
+def credit_inquiries_add(subject_id: str, body: CreditInquiryCreate):
+    from src.services.credit_info import record_inquiry
+
+    try:
+        return record_inquiry(
+            subject_id=subject_id,
+            requester=body.requester,
+            purpose=body.purpose,
+            inquiry_type=body.inquiry_type,
+            require_consent=body.require_consent,
+        )
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+    except PermissionError as exc:
+        raise HTTPException(403, str(exc)) from exc
+
+
+@router.get("/credit/subjects/{subject_id}/inquiries")
+def credit_inquiries_list(subject_id: str):
+    from src.services.credit_info import get_subject, list_inquiries
+
+    if not get_subject(subject_id):
+        raise HTTPException(404, "subject not found")
+    return {"items": list_inquiries(subject_id)}
+
+
+@router.get("/credit/subjects/{subject_id}/score")
+def credit_score_get(subject_id: str):
+    from src.services.credit_info import compute_score, get_subject
+
+    if not get_subject(subject_id):
+        raise HTTPException(404, "subject not found")
+    return compute_score(subject_id)
+
+
+@router.get("/credit/subjects/{subject_id}/report")
+def credit_report_get(subject_id: str, reveal: bool = False):
+    from src.services.credit_info import build_report
+
+    try:
+        return build_report(subject_id, reveal=reveal)
+    except ValueError as exc:
+        raise HTTPException(404, str(exc)) from exc
+
+
+@router.get("/credit/audit")
+def credit_audit_list(limit: int = 100, subject_id: Optional[str] = None):
+    from src.services.credit_info import list_audit
+
+    return {"items": list_audit(limit=limit, subject_id=subject_id)}
+

@@ -140,6 +140,17 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .eval-samples { display: flex; flex-direction: column; gap: .55rem; }
 .feedback-row { display: flex; gap: .4rem; margin-top: .55rem; flex-wrap: wrap; }
 .feedback-row .btn-ghost { font-size: .78rem; padding: .3rem .55rem; }
+.field {
+  display: flex; flex-direction: column; gap: .35rem;
+  margin: .55rem 0; color: var(--muted); font-size: .85rem;
+}
+.field input { width: 100%; }
+.plain-list {
+  list-style: none; margin: .65rem 0 0; padding: 0;
+  display: flex; flex-direction: column; gap: .45rem;
+  color: var(--muted); font-size: .88rem;
+}
+.plain-list li { line-height: 1.45; }
 @media (max-width: 860px) {
   .chat-composer { grid-template-columns: 1fr; }
   .metric-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -36,6 +36,24 @@ def generate_text(
                 out["text"] = gr["outputs"][0]["text"]
         return out
 
+    if provider == "vertex":
+        from src.services.vertex_text import generate_text_vertex
+
+        out = generate_text_vertex(
+            prompt,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        if apply_guardrail and settings.enable_guardrails:
+            from src.services.guardrails import apply_guardrails
+
+            gr = apply_guardrails(out["text"])
+            out["guardrail"] = gr
+            if gr.get("action") == "GUARDRAIL_INTERVENED":
+                out["text"] = gr["outputs"][0]["text"]
+        return out
+
     if provider == "mock" or settings.mock_mode:
         out = mock_text(prompt, system=system)
         if apply_guardrail and settings.enable_guardrails:

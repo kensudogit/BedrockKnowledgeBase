@@ -29,6 +29,8 @@
 | 精度モニタリング | snapshot / alerts / feedback | `/ops` · `/api/monitoring/*` |
 | 利用観測 | latency / error / mock rate | `/api/metrics/summary` |
 | 新手法の探索 | Lab + datasets 拡張 + 実験比較 | `/lab` · `/evaluation` · DS_WORKFLOW.md |
+| GCP 連携 | Vertex AI テキスト / GCS アップロード | `/gcp` · `/api/gcp/*` |
+| 信用情報管理 | 本人・契約・同意・照会・スコア・監査 | `/credit` · `/api/credit/*` |
 
 ## 推奨フロー（受託 / 自社共通）
 

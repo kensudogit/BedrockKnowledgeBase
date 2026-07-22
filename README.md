@@ -13,7 +13,7 @@ AWS 上のエンタープライズ向け生成 AI 基盤（ローカル開発 + 
 | ⑤ | Prompt Management | `GET/POST /api/prompts` |
 | ⑥ | Model Evaluation | `POST /api/evaluation/run` |
 
-追加: マルチターン Chat `POST /api/chat` · 文書取込 `POST /api/documents` · RAG `POST /api/rag/query` · Agents `POST /api/agents/invoke`
+追加: マルチターン Chat `POST /api/chat` · 文書取込 `POST /api/documents` · RAG `POST /api/rag/query` · Agents `POST /api/agents/invoke` · GCP/Vertex `/api/gcp/*` · 信用情報 `/api/credit/*`
 
 ### 実用性強化（ローカルでも有効）
 

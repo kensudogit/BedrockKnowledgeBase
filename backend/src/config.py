@@ -55,6 +55,16 @@ class Settings(BaseSettings):
     openai_text_model_id: str = "gpt-4o-mini"
     jwt_secret: str = ""
 
+    # Google Cloud / Vertex AI
+    gcp_project_id: str = ""
+    gcp_region: str = "asia-northeast1"
+    gcp_access_token: str = ""
+    google_application_credentials: str = ""
+    vertex_text_model_id: str = "gemini-2.0-flash-001"
+    gcs_documents_bucket: str = ""
+    use_vertex_mock: bool = True
+    prefer_vertex: bool = False
+
     # Auth: comma-separated keys; require_api_key=true for staging/prod client demos
     api_keys: str = ""
     require_api_key: bool = False
@@ -121,6 +131,19 @@ class Settings(BaseSettings):
         return bool(self.aws_access_key_id.strip())
 
     @property
+    def gcp_configured(self) -> bool:
+        return bool(self.gcp_project_id.strip())
+
+    @property
+    def vertex_ready(self) -> bool:
+        """Vertex path available (mock or real token/credentials)."""
+        if not self.gcp_configured:
+            return False
+        if self.use_vertex_mock:
+            return True
+        return bool(self.gcp_access_token.strip() or self.google_application_credentials.strip())
+
+    @property
     def mock_mode(self) -> bool:
         """True when Bedrock Runtime path is mocked / unavailable."""
         return bool(self.use_bedrock_mock) or not (
@@ -132,8 +155,12 @@ class Settings(BaseSettings):
         """Provider used for text generation (chat / RAG answer)."""
         if not self.use_bedrock_mock and self.bedrock_credentials_configured:
             return "bedrock"
+        if self.prefer_vertex and self.vertex_ready:
+            return "vertex"
         if self.openai_configured:
             return "openai"
+        if self.vertex_ready:
+            return "vertex"
         return "mock"
 
 

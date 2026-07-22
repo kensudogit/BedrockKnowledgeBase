@@ -237,4 +237,61 @@ export const api = {
   testsHistory: (limit = 20) =>
     json<{ items: Array<Record<string, unknown>> }>(`/api/tests/history?limit=${limit}`),
   testsRun: (runId: string) => json<Record<string, unknown>>(`/api/tests/runs/${runId}`),
+  gcpStatus: () => json<Record<string, unknown>>("/api/gcp/status"),
+  gcpText: (prompt: string, system?: string) =>
+    json<{ text: string; mock?: boolean; provider?: string; model?: string }>("/api/gcp/text", {
+      method: "POST",
+      body: JSON.stringify({ prompt, system, apply_guardrail: true }),
+    }),
+  gcsUpload: (filename: string, content: string) =>
+    json<Record<string, unknown>>("/api/gcp/storage/upload", {
+      method: "POST",
+      body: JSON.stringify({ filename, content }),
+    }),
+  gcsUploads: () => json<{ items: Array<Record<string, unknown>> }>("/api/gcp/storage/uploads"),
+  creditSubjects: () => json<{ items: Array<Record<string, unknown>> }>("/api/credit/subjects"),
+  creditCreateSubject: (body: {
+    full_name: string;
+    birth_date: string;
+    phone?: string;
+    email?: string;
+    external_ref?: string;
+    notes?: string;
+  }) =>
+    json<Record<string, unknown>>("/api/credit/subjects", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  creditAddContract: (
+    subjectId: string,
+    body: {
+      contract_type?: string;
+      lender: string;
+      credit_limit?: number;
+      balance?: number;
+      payment_status?: string;
+      months_delinquent?: number;
+    },
+  ) =>
+    json<Record<string, unknown>>(`/api/credit/subjects/${subjectId}/contracts`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  creditAddConsent: (subjectId: string, body: { purpose?: string; requester: string }) =>
+    json<Record<string, unknown>>(`/api/credit/subjects/${subjectId}/consents`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  creditAddInquiry: (
+    subjectId: string,
+    body: { requester: string; inquiry_type?: string; purpose?: string },
+  ) =>
+    json<Record<string, unknown>>(`/api/credit/subjects/${subjectId}/inquiries`, {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  creditReport: (subjectId: string) =>
+    json<Record<string, unknown>>(`/api/credit/subjects/${subjectId}/report`),
+  creditAudit: (limit = 50) =>
+    json<{ items: Array<Record<string, unknown>> }>(`/api/credit/audit?limit=${limit}`),
 };

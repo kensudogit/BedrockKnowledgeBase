@@ -28,6 +28,9 @@ describe("Nav", () => {
     expect(screen.getByText(/Bedrock/)).toBeTruthy();
     expect(screen.getByRole("link", { name: "Tests" }).getAttribute("href")).toBe("/tests");
     expect(screen.getByRole("link", { name: "Ops" }).getAttribute("href")).toBe("/ops");
+    expect(screen.getByRole("link", { name: "GCP" }).getAttribute("href")).toBe("/gcp");
+    expect(screen.getByRole("link", { name: "信用情報" }).getAttribute("href")).toBe("/credit");
     expect(screen.getByRole("link", { name: "Text / RAG" }).getAttribute("href")).toBe("/chat");
   });
 });
+

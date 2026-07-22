@@ -145,6 +145,9 @@ def health():
             "openai",
             "jwt_auth",
             "test_runner",
+            "gcp_vertex",
+            "gcs_storage",
+            "credit_info",
         ],
         "knowledge_base_configured": bool(s.bedrock_knowledge_base_id),
         "guardrail_configured": bool(s.bedrock_guardrail_id),
@@ -153,5 +156,8 @@ def health():
         "database_ok": bool(db.get("ok")),
         "openai_configured": s.openai_configured,
         "jwt_configured": s.jwt_configured,
+        "gcp_configured": s.gcp_configured,
+        "vertex_ready": s.vertex_ready,
+        "gcs_configured": bool(s.gcs_documents_bucket.strip()),
         "require_api_key": s.require_api_key,
     }
