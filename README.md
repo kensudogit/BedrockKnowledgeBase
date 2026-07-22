@@ -35,7 +35,13 @@ AWS 上のエンタープライズ向け生成 AI 基盤（ローカル開発 + 
 | KB Ingest | ローカル索引 + S3/KB 同期ジョブ（`POST /api/documents/kb-ingest`） |
 | Env | `APP_ENV=development\|staging\|production` |
 
-詳細: [docs/DS_WORKFLOW.md](docs/DS_WORKFLOW.md)
+詳細: [docs/DS_WORKFLOW.md](docs/DS_WORKFLOW.md) · 業務対応表: [docs/ROLE_CAPABILITIES.md](docs/ROLE_CAPABILITIES.md)
+
+### 業務工程カバー
+
+1. **AIモデル分析・開発** — `/lab`（Text / RAG / Image / Tabular）+ Experiments  
+2. **MLプロダクション化** — Model Registry（dev→staging→production）+ KB/S3 ingest  
+3. **アプリ構築・運用** — Chat/Agents UI + CI 品質ゲート + `/ops` 精度モニタ
 
 ## 技術スタック
 

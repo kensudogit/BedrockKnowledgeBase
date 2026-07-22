@@ -7,15 +7,30 @@ from fastapi import APIRouter, File, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from src.services.agents import invoke_agent
+from src.services.analysis import analyze_image, analyze_rag, analyze_tabular, analyze_text
 from src.services.bedrock_embed import embed_texts
 from src.services.bedrock_image import decode_preview_data_url, generate_image
 from src.services.bedrock_text import generate_text
 from src.services.datasets import get_dataset, list_datasets, save_dataset
 from src.services.documents import delete_document, ingest_text, list_documents
 from src.services.evaluation import compare_evaluations, list_evaluations, run_model_evaluation
+from src.services.experiments import get_experiment, list_experiments, log_experiment
 from src.services.feedback import add_feedback, feedback_summary, list_feedback
 from src.services.guardrails import apply_guardrails
 from src.services.kb_ingest import get_ingestion_status, ingest_to_knowledge_base, list_ingest_jobs
+from src.services.model_registry import (
+    active_models,
+    get_model,
+    list_models,
+    promote_model,
+    register_model,
+)
+from src.services.monitoring import (
+    delivery_status,
+    monitor_series,
+    quality_alerts,
+    record_monitor_snapshot,
+)
 from src.services.projects import create_project, list_projects
 from src.services.prompts import get_prompt, list_prompts, render_prompt, seed_default_prompts, upsert_prompt
 from src.services.rag import rag_answer, retrieve_knowledge_base
@@ -26,6 +41,7 @@ from src.services.sessions import (
     history_for_rag,
     list_sessions,
 )
+from src.services.tabular import synthesize_demo_csv
 from src.services.telemetry import summarize as telemetry_summary
 
 router = APIRouter(prefix="/api", tags=["ai"])
@@ -499,4 +515,178 @@ def ops_summary():
         "datasets": list_datasets(),
         "ingest_jobs": list_ingest_jobs(10),
         "recent_evals": list_evaluations(5),
+        "delivery": delivery_status(),
+        "models": list_models()[:20],
+        "experiments": list_experiments(10),
+        "monitor": quality_alerts(),
     }
+
+
+class AnalysisTextRequest(BaseModel):
+    prompt: str
+    project_id: Optional[str] = None
+
+
+class AnalysisRagRequest(BaseModel):
+    query: str
+    use_case: str = "document_search"
+    project_id: Optional[str] = None
+
+
+class AnalysisTabularRequest(BaseModel):
+    csv_text: str
+    target: Optional[str] = None
+    task: str = "auto"
+    project_id: Optional[str] = None
+
+
+class ExperimentCreate(BaseModel):
+    name: str
+    modality: str
+    params: dict[str, Any] = {}
+    metrics: dict[str, Any] = {}
+    artifacts: dict[str, Any] = {}
+    project_id: Optional[str] = None
+    notes: str = ""
+
+
+class ModelRegister(BaseModel):
+    name: str
+    modality: str
+    version: str = "0.1.0"
+    provider: str = "bedrock"
+    model_uri: str = ""
+    metrics: dict[str, Any] = {}
+    experiment_id: Optional[str] = None
+    project_id: Optional[str] = None
+    stage: str = "development"
+    meta: dict[str, Any] = {}
+
+
+class ModelPromote(BaseModel):
+    to_stage: str
+
+
+@router.post("/analysis/text")
+def analysis_text(body: AnalysisTextRequest):
+    return analyze_text(body.prompt, project_id=body.project_id)
+
+
+@router.post("/analysis/image")
+def analysis_image(body: AnalysisTextRequest):
+    out = analyze_image(body.prompt, project_id=body.project_id)
+    if out.get("result"):
+        out["result"]["data_url"] = decode_preview_data_url(out["result"].get("image_base64") or "")
+    return out
+
+
+@router.post("/analysis/rag")
+def analysis_rag(body: AnalysisRagRequest):
+    return analyze_rag(body.query, use_case=body.use_case, project_id=body.project_id)
+
+
+@router.post("/analysis/tabular")
+def analysis_tabular(body: AnalysisTabularRequest):
+    try:
+        return analyze_tabular(
+            body.csv_text,
+            target=body.target,
+            task=body.task,
+            project_id=body.project_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/analysis/tabular/demo-csv")
+def analysis_tabular_demo():
+    return {"csv_text": synthesize_demo_csv(), "target": "churn"}
+
+
+@router.get("/experiments")
+def experiments_list(modality: Optional[str] = None):
+    return {"items": list_experiments(50, modality=modality)}
+
+
+@router.get("/experiments/{experiment_id}")
+def experiments_get(experiment_id: str):
+    exp = get_experiment(experiment_id)
+    if not exp:
+        raise HTTPException(404, "experiment not found")
+    return exp
+
+
+@router.post("/experiments")
+def experiments_create(body: ExperimentCreate):
+    return log_experiment(
+        name=body.name,
+        modality=body.modality,
+        params=body.params,
+        metrics=body.metrics,
+        artifacts=body.artifacts,
+        project_id=body.project_id,
+        notes=body.notes,
+    )
+
+
+@router.get("/models")
+def models_list(stage: Optional[str] = None):
+    return {"items": list_models(stage=stage), "active": active_models()}
+
+
+@router.get("/models/{model_id}")
+def models_get(model_id: str):
+    m = get_model(model_id)
+    if not m:
+        raise HTTPException(404, "model not found")
+    return m
+
+
+@router.post("/models")
+def models_register(body: ModelRegister):
+    try:
+        return register_model(
+            name=body.name,
+            modality=body.modality,
+            version=body.version,
+            provider=body.provider,
+            model_uri=body.model_uri,
+            metrics=body.metrics,
+            experiment_id=body.experiment_id,
+            project_id=body.project_id,
+            stage=body.stage,
+            meta=body.meta,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.post("/models/{model_id}/promote")
+def models_promote(model_id: str, body: ModelPromote):
+    try:
+        return promote_model(model_id, body.to_stage)
+    except KeyError:
+        raise HTTPException(404, "model not found")
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/monitoring/series")
+def monitoring_series():
+    return {"items": monitor_series()}
+
+
+@router.post("/monitoring/snapshot")
+def monitoring_snapshot():
+    return record_monitor_snapshot(source="api")
+
+
+@router.get("/monitoring/alerts")
+def monitoring_alerts():
+    return quality_alerts()
+
+
+@router.get("/delivery/status")
+def delivery_status_api():
+    return delivery_status()
+

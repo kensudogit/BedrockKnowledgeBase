@@ -178,6 +178,48 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ filename, content }),
     }),
+  analyzeText: (prompt: string) =>
+    json<Record<string, unknown>>("/api/analysis/text", {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
+    }),
+  analyzeImage: (prompt: string) =>
+    json<Record<string, unknown>>("/api/analysis/image", {
+      method: "POST",
+      body: JSON.stringify({ prompt }),
+    }),
+  analyzeRag: (query: string, use_case = "document_search") =>
+    json<Record<string, unknown>>("/api/analysis/rag", {
+      method: "POST",
+      body: JSON.stringify({ query, use_case }),
+    }),
+  analyzeTabular: (csv_text: string, target?: string, task = "auto") =>
+    json<Record<string, unknown>>("/api/analysis/tabular", {
+      method: "POST",
+      body: JSON.stringify({ csv_text, target, task }),
+    }),
+  demoCsv: () => json<{ csv_text: string; target: string }>("/api/analysis/tabular/demo-csv"),
+  experiments: (modality?: string) =>
+    json<{ items: Array<Record<string, unknown>> }>(
+      modality ? `/api/experiments?modality=${encodeURIComponent(modality)}` : "/api/experiments",
+    ),
+  models: () =>
+    json<{ items: Array<Record<string, unknown>>; active: Record<string, unknown> }>("/api/models"),
+  registerModel: (body: Record<string, unknown>) =>
+    json<Record<string, unknown>>("/api/models", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  promoteModel: (modelId: string, to_stage: string) =>
+    json<Record<string, unknown>>(`/api/models/${modelId}/promote`, {
+      method: "POST",
+      body: JSON.stringify({ to_stage }),
+    }),
+  monitorSeries: () => json<{ items: Array<Record<string, unknown>> }>("/api/monitoring/series"),
+  monitorSnapshot: () =>
+    json<Record<string, unknown>>("/api/monitoring/snapshot", { method: "POST" }),
+  monitorAlerts: () => json<Record<string, unknown>>("/api/monitoring/alerts"),
+  deliveryStatus: () => json<Record<string, unknown>>("/api/delivery/status"),
   agent: (message: string, session_id?: string | null) =>
     json<{ answer: string; plan?: string; mock?: boolean; session_id?: string }>(
       "/api/agents/invoke",
