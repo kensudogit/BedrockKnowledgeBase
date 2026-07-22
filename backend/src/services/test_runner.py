@@ -5,6 +5,7 @@ import json
 import os
 import subprocess
 import sys
+import threading
 import time
 import traceback
 from datetime import datetime, timezone
@@ -16,6 +17,8 @@ from src.services.persist import append, load, rewrite
 
 _STORE = "test_runs"
 _MAX_HISTORY = 40
+_RUN_LOCK = threading.Lock()
+_ACTIVE: set[str] = set()
 
 
 def _resolve_layout() -> tuple[Path, Path]:
@@ -158,7 +161,8 @@ def _collect_vitest() -> dict[str, Any]:
             pass
 
     start = time.perf_counter()
-    env = {**os.environ, "CI": "1", "FORCE_COLOR": "0"}
+    # NODE_ENV=test is required — production React build has no React.act()
+    env = {**os.environ, "CI": "1", "FORCE_COLOR": "0", "NODE_ENV": "test"}
     npm_cmd = ["npm", "run", "test:json"]
     try:
         proc = subprocess.run(
@@ -242,7 +246,19 @@ def _collect_vitest() -> dict[str, Any]:
     }
 
 
-def run_tests(suites: list[str] | None = None) -> dict[str, Any]:
+def _upsert_run(run: dict[str, Any]) -> None:
+    items = [r for r in load(_STORE) if r.get("run_id") != run.get("run_id")]
+    items.append(run)
+    items = sorted(items, key=lambda x: x.get("created_at") or "", reverse=True)[:_MAX_HISTORY]
+    rewrite(_STORE, items)
+
+
+def run_tests(
+    suites: list[str] | None = None,
+    *,
+    run_id: str | None = None,
+    persist: bool = True,
+) -> dict[str, Any]:
     wanted = {s.lower() for s in (suites or ["python", "frontend"])}
     # Refresh layout in case of unusual working directories
     global _BACKEND, _FRONTEND
@@ -251,7 +267,6 @@ def run_tests(suites: list[str] | None = None) -> dict[str, Any]:
     suite_results: list[dict[str, Any]] = []
     if "python" in wanted:
         os.environ.setdefault("USE_BEDROCK_MOCK", "true")
-        # Do not force-clear DYNAMODB_ENDPOINT on Railway if already empty
         cwd = os.getcwd()
         try:
             os.chdir(_BACKEND)
@@ -287,8 +302,9 @@ def run_tests(suites: list[str] | None = None) -> dict[str, Any]:
         status = "empty"
 
     run = {
-        "run_id": str(uuid4()),
+        "run_id": run_id or str(uuid4()),
         "created_at": _now(),
+        "finished_at": _now(),
         "status": status,
         "passed": passed,
         "failed": failed,
@@ -297,13 +313,80 @@ def run_tests(suites: list[str] | None = None) -> dict[str, Any]:
         "duration_ms": sum(int(s.get("duration_ms") or 0) for s in suite_results),
         "suites": suite_results,
         "layout": {"backend": str(_BACKEND), "frontend": str(_FRONTEND)},
+        "requested_suites": sorted(wanted),
     }
-    try:
-        append(_STORE, run)
-    except Exception:
-        # Still return results even if persistence fails
-        run["persist_error"] = "failed to append test_runs"
+    if persist:
+        try:
+            _upsert_run(run)
+        except Exception:
+            try:
+                append(_STORE, run)
+            except Exception:
+                run["persist_error"] = "failed to persist test_runs"
     return run
+
+
+def start_tests_async(suites: list[str] | None = None) -> dict[str, Any]:
+    """Return immediately with status=running; finish in a background thread."""
+    wanted = [s.lower() for s in (suites or ["python", "frontend"])]
+    run_id = str(uuid4())
+    stub: dict[str, Any] = {
+        "run_id": run_id,
+        "created_at": _now(),
+        "status": "running",
+        "passed": 0,
+        "failed": 0,
+        "skipped": 0,
+        "total": 0,
+        "duration_ms": 0,
+        "suites": [],
+        "requested_suites": wanted,
+        "message": "テスト実行中… 完了まで数秒〜数分かかります",
+    }
+    with _RUN_LOCK:
+        if _ACTIVE:
+            stub["status"] = "error"
+            stub["message"] = "別のテスト実行が進行中です。完了後に再実行してください。"
+            stub["error"] = stub["message"]
+            try:
+                _upsert_run(stub)
+            except Exception:
+                append(_STORE, stub)
+            return stub
+        _ACTIVE.add(run_id)
+
+    try:
+        _upsert_run(stub)
+    except Exception:
+        append(_STORE, stub)
+
+    def _worker() -> None:
+        try:
+            run_tests(wanted, run_id=run_id, persist=True)
+        except Exception as exc:
+            suites = []
+            if "python" in wanted:
+                suites.append(_empty_suite("python", "pytest", str(exc)))
+            if "frontend" in wanted:
+                suites.append(_empty_suite("frontend", "vitest", str(exc)))
+            failed = {
+                **stub,
+                "status": "error",
+                "finished_at": _now(),
+                "error": str(exc),
+                "message": f"runner crashed: {exc}",
+                "suites": suites,
+            }
+            try:
+                _upsert_run(failed)
+            except Exception:
+                pass
+        finally:
+            with _RUN_LOCK:
+                _ACTIVE.discard(run_id)
+
+    threading.Thread(target=_worker, name=f"tests-{run_id[:8]}", daemon=True).start()
+    return stub
 
 
 def list_runs(limit: int = 20) -> list[dict[str, Any]]:

@@ -567,11 +567,11 @@ class TestRunRequest(BaseModel):
 
 @router.post("/tests/run")
 def tests_run(body: TestRunRequest):
-    """Execute pytest + vitest and persist results for the Web Tests page."""
-    from src.services.test_runner import run_tests
+    """Start pytest + vitest in background; poll GET /api/tests/runs/{id}."""
+    from src.services.test_runner import start_tests_async
 
     try:
-        return run_tests(body.suites)
+        return start_tests_async(body.suites)
     except Exception as exc:
         raise HTTPException(500, f"test runner failed: {exc}") from exc
 

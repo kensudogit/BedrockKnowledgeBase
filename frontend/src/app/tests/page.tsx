@@ -66,11 +66,28 @@ export default function TestsPage() {
     setBusy(true);
     setError("");
     try {
-      const r = (await api.runTests(suites)) as Run;
+      let r = (await api.runTests(suites)) as Run;
       setRun(r);
+      // Background runner: poll until finished (avoids proxy 500 on long sync runs)
+      const id = r.run_id;
+      let guard = 0;
+      while (id && r.status === "running" && guard < 180) {
+        await new Promise((resolve) => setTimeout(resolve, 2000));
+        r = (await api.testsRun(id)) as Run;
+        setRun(r);
+        guard += 1;
+      }
       await reload();
+      if (r.status === "running") {
+        setError("タイムアウト: 実行は継続中の可能性があります。「最新を再読込」で確認してください。");
+      }
     } catch (e) {
       setError(String(e));
+      try {
+        await reload();
+      } catch {
+        /* ignore */
+      }
     } finally {
       setBusy(false);
     }
@@ -140,7 +157,11 @@ export default function TestsPage() {
           {run ? (
             <ul>
               <li>
-                状態: <strong>{run.status}</strong>
+                状態:{" "}
+                <strong style={{ color: run.status === "running" ? "#93c5fd" : undefined }}>
+                  {run.status}
+                </strong>
+                {run.status === "running" ? " （バックグラウンド実行中・自動更新）" : ""}
               </li>
               <li>
                 合計 {run.total ?? 0} / 成功 {run.passed ?? 0} / 失敗 {run.failed ?? 0} / スキップ{" "}

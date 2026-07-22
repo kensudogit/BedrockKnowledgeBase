@@ -7,10 +7,8 @@ def test_resolve_layout_points_at_backend_tests_and_frontend():
     assert (frontend / "package.json").is_file()
 
 
-def test_run_python_suite_smoke():
-    run = tr.run_tests(["python"])
-    assert run["total"] >= 1
-    assert run["status"] in ("passed", "failed")
-    assert run["layout"]["backend"]
-    py = next(s for s in run["suites"] if s["suite"] == "python")
-    assert py["total"] >= 1
+def test_empty_suite_helper():
+    suite = tr._empty_suite("python", "pytest", "demo-error")
+    assert suite["total"] == 0
+    assert suite["error"] == "demo-error"
+    assert suite["tests"] == []

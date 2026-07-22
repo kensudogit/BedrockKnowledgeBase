@@ -10,18 +10,27 @@ _LOCK = threading.Lock()
 
 
 def _root() -> Path:
+    """Pick a writable data/ops directory (Docker=/app, local=repo)."""
     here = Path(__file__).resolve()
-    for candidate in (
-        here.parents[3] / "data" / "ops",
-        here.parents[2] / "data" / "ops",
+    # here = .../src/services/persist.py → parents[2] is backend or /app
+    candidates = (
         Path("/app/data/ops"),
+        here.parents[2] / "data" / "ops",
         Path.cwd() / "data" / "ops",
-    ):
-        candidate.mkdir(parents=True, exist_ok=True)
-        return candidate
-    p = here.parents[3] / "data" / "ops"
-    p.mkdir(parents=True, exist_ok=True)
-    return p
+        Path("/tmp/bkb-data/ops"),
+    )
+    errors: list[str] = []
+    for candidate in candidates:
+        try:
+            candidate.mkdir(parents=True, exist_ok=True)
+            probe = candidate / ".write_probe"
+            probe.write_text("ok", encoding="utf-8")
+            probe.unlink(missing_ok=True)
+            return candidate
+        except Exception as exc:  # noqa: BLE001 — try next writable root
+            errors.append(f"{candidate}: {exc}")
+            continue
+    raise RuntimeError("no writable data/ops directory; tried: " + "; ".join(errors))
 
 
 def _path(collection: str) -> Path:
