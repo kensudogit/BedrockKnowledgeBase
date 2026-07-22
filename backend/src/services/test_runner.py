@@ -253,6 +253,54 @@ def _upsert_run(run: dict[str, Any]) -> None:
     rewrite(_STORE, items)
 
 
+def _parse_ts(value: str | None) -> float:
+    if not value:
+        return 0.0
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00")).timestamp()
+    except Exception:
+        return 0.0
+
+
+def reap_stale_runs(max_age_sec: int = 120) -> int:
+    """Mark abandoned status=running rows as timed out (e.g. worker crash)."""
+    now = time.time()
+    items = load(_STORE)
+    changed = 0
+    out: list[dict[str, Any]] = []
+    for r in items:
+        if r.get("status") == "running" and now - _parse_ts(r.get("created_at")) > max_age_sec:
+            r = {
+                **r,
+                "status": "error",
+                "finished_at": _now(),
+                "error": f"stale running run timed out after {max_age_sec}s",
+                "message": "実行が中断されたかタイムアウトしました。再度「全スイート実行」を押してください。",
+            }
+            changed += 1
+            with _RUN_LOCK:
+                _ACTIVE.discard(str(r.get("run_id") or ""))
+        out.append(r)
+    if changed:
+        rewrite(_STORE, out)
+    return changed
+
+
+def _progress(run_id: str | None, message: str, suites: list[dict[str, Any]] | None = None) -> None:
+    if not run_id:
+        return
+    prev = get_run(run_id) or {"run_id": run_id, "created_at": _now()}
+    _upsert_run(
+        {
+            **prev,
+            "status": "running",
+            "message": message,
+            "suites": suites if suites is not None else prev.get("suites") or [],
+            "updated_at": _now(),
+        }
+    )
+
+
 def run_tests(
     suites: list[str] | None = None,
     *,
@@ -260,12 +308,15 @@ def run_tests(
     persist: bool = True,
 ) -> dict[str, Any]:
     wanted = {s.lower() for s in (suites or ["python", "frontend"])}
-    # Refresh layout in case of unusual working directories
     global _BACKEND, _FRONTEND
     _BACKEND, _FRONTEND = _resolve_layout()
+    created_at = (get_run(run_id) or {}).get("created_at") if run_id else None
+    created_at = created_at or _now()
 
     suite_results: list[dict[str, Any]] = []
     if "python" in wanted:
+        if persist:
+            _progress(run_id, "Python (pytest) 実行中…", suite_results)
         os.environ.setdefault("USE_BEDROCK_MOCK", "true")
         cwd = os.getcwd()
         try:
@@ -279,7 +330,12 @@ def run_tests(
             )
         finally:
             os.chdir(cwd)
+        if persist:
+            _progress(run_id, "Python 完了。Frontend 準備中…", suite_results)
+
     if "frontend" in wanted:
+        if persist:
+            _progress(run_id, "Frontend (Vitest) 実行中…", suite_results)
         try:
             suite_results.append(_collect_vitest())
         except Exception as exc:
@@ -303,7 +359,7 @@ def run_tests(
 
     run = {
         "run_id": run_id or str(uuid4()),
-        "created_at": _now(),
+        "created_at": created_at,
         "finished_at": _now(),
         "status": status,
         "passed": passed,
@@ -314,6 +370,7 @@ def run_tests(
         "suites": suite_results,
         "layout": {"backend": str(_BACKEND), "frontend": str(_FRONTEND)},
         "requested_suites": sorted(wanted),
+        "message": f"完了: {passed} passed / {failed} failed / {total} total",
     }
     if persist:
         try:
@@ -328,7 +385,21 @@ def run_tests(
 
 def start_tests_async(suites: list[str] | None = None) -> dict[str, Any]:
     """Return immediately with status=running; finish in a background thread."""
+    reap_stale_runs()
     wanted = [s.lower() for s in (suites or ["python", "frontend"])]
+
+    with _RUN_LOCK:
+        if _ACTIVE:
+            active_id = next(iter(_ACTIVE))
+            existing = get_run(active_id)
+            if existing and existing.get("status") == "running":
+                existing = {
+                    **existing,
+                    "message": existing.get("message")
+                    or "別のテスト実行が進行中です。この結果を監視しています。",
+                }
+                return existing
+
     run_id = str(uuid4())
     stub: dict[str, Any] = {
         "run_id": run_id,
@@ -339,20 +410,14 @@ def start_tests_async(suites: list[str] | None = None) -> dict[str, Any]:
         "skipped": 0,
         "total": 0,
         "duration_ms": 0,
-        "suites": [],
+        "suites": [
+            {"suite": s, "runner": "pytest" if s == "python" else "vitest", "status": "queued"}
+            for s in wanted
+        ],
         "requested_suites": wanted,
-        "message": "テスト実行中… 完了まで数秒〜数分かかります",
+        "message": "テスト実行を開始しました…",
     }
     with _RUN_LOCK:
-        if _ACTIVE:
-            stub["status"] = "error"
-            stub["message"] = "別のテスト実行が進行中です。完了後に再実行してください。"
-            stub["error"] = stub["message"]
-            try:
-                _upsert_run(stub)
-            except Exception:
-                append(_STORE, stub)
-            return stub
         _ACTIVE.add(run_id)
 
     try:
@@ -390,6 +455,7 @@ def start_tests_async(suites: list[str] | None = None) -> dict[str, Any]:
 
 
 def list_runs(limit: int = 20) -> list[dict[str, Any]]:
+    reap_stale_runs()
     items = load(_STORE)
     items = sorted(items, key=lambda x: x.get("created_at") or "", reverse=True)
     if len(items) > _MAX_HISTORY:
@@ -404,6 +470,7 @@ def list_runs(limit: int = 20) -> list[dict[str, Any]]:
             "skipped": r.get("skipped"),
             "total": r.get("total"),
             "duration_ms": r.get("duration_ms"),
+            "message": r.get("message"),
             "suite_names": [s.get("suite") for s in r.get("suites") or []],
         }
         for r in items[:limit]
@@ -411,6 +478,7 @@ def list_runs(limit: int = 20) -> list[dict[str, Any]]:
 
 
 def get_run(run_id: str) -> dict[str, Any] | None:
+    reap_stale_runs()
     for r in load(_STORE):
         if r.get("run_id") == run_id:
             return r
@@ -418,7 +486,9 @@ def get_run(run_id: str) -> dict[str, Any] | None:
 
 
 def latest_run() -> dict[str, Any] | None:
-    items = list_runs(limit=1)
+    reap_stale_runs()
+    items = load(_STORE)
     if not items:
         return None
-    return get_run(str(items[0]["run_id"]))
+    items = sorted(items, key=lambda x: x.get("created_at") or "", reverse=True)
+    return items[0]

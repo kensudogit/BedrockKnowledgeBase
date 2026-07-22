@@ -38,7 +38,22 @@ type Run = {
   duration_ms?: number;
   suites?: SuiteResult[];
   layout?: { backend?: string; frontend?: string };
+  message?: string;
+  error?: string;
 };
+
+async function pollRun(id: string, onUpdate: (r: Run) => void, maxTicks = 120): Promise<Run> {
+  let r = (await api.testsRun(id)) as Run;
+  onUpdate(r);
+  let guard = 0;
+  while (r.status === "running" && guard < maxTicks) {
+    await new Promise((resolve) => setTimeout(resolve, 1500));
+    r = (await api.testsRun(id)) as Run;
+    onUpdate(r);
+    guard += 1;
+  }
+  return r;
+}
 
 export default function TestsPage() {
   const [run, setRun] = useState<Run | null>(null);
@@ -47,39 +62,57 @@ export default function TestsPage() {
   const [busy, setBusy] = useState(false);
   const [filter, setFilter] = useState<"all" | "failed" | "passed">("all");
 
+  const reloadHistory = useCallback(async () => {
+    const hist = await api.testsHistory(15);
+    setHistory(hist.items || []);
+  }, []);
+
   const reload = useCallback(async () => {
     try {
       const [latest, hist] = await Promise.all([api.testsLatest(), api.testsHistory(15)]);
-      setRun((latest.run as Run) || null);
+      const current = (latest.run as Run) || null;
+      setRun(current);
       setHistory(hist.items || []);
       setError("");
+      return current;
     } catch (e) {
       setError(String(e));
+      return null;
     }
   }, []);
 
   useEffect(() => {
-    reload();
-  }, [reload]);
+    let cancelled = false;
+    (async () => {
+      const current = await reload();
+      if (cancelled || !current?.run_id || current.status !== "running") return;
+      setBusy(true);
+      try {
+        await pollRun(current.run_id, (r) => {
+          if (!cancelled) setRun(r);
+        });
+        if (!cancelled) await reloadHistory();
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [reload, reloadHistory]);
 
   async function runSuites(suites: string[]) {
     setBusy(true);
     setError("");
     try {
-      let r = (await api.runTests(suites)) as Run;
-      setRun(r);
-      // Background runner: poll until finished (avoids proxy 500 on long sync runs)
-      const id = r.run_id;
-      let guard = 0;
-      while (id && r.status === "running" && guard < 180) {
-        await new Promise((resolve) => setTimeout(resolve, 2000));
-        r = (await api.testsRun(id)) as Run;
-        setRun(r);
-        guard += 1;
-      }
-      await reload();
-      if (r.status === "running") {
-        setError("タイムアウト: 実行は継続中の可能性があります。「最新を再読込」で確認してください。");
+      const started = (await api.runTests(suites)) as Run;
+      setRun(started);
+      const id = started.run_id;
+      if (!id) throw new Error("run_id missing");
+      const finished = await pollRun(id, setRun);
+      await reloadHistory();
+      if (finished.status === "running") {
+        setError("タイムアウト: 「最新を再読込」で状態を確認してください。");
       }
     } catch (e) {
       setError(String(e));
@@ -95,9 +128,14 @@ export default function TestsPage() {
 
   async function openRun(id: string) {
     setBusy(true);
+    setError("");
     try {
-      const r = (await api.testsRun(id)) as Run;
+      let r = (await api.testsRun(id)) as Run;
       setRun(r);
+      if (r.status === "running") {
+        r = await pollRun(id, setRun);
+      }
+      await reloadHistory();
     } catch (e) {
       setError(String(e));
     } finally {
@@ -161,8 +199,12 @@ export default function TestsPage() {
                 <strong style={{ color: run.status === "running" ? "#93c5fd" : undefined }}>
                   {run.status}
                 </strong>
-                {run.status === "running" ? " （バックグラウンド実行中・自動更新）" : ""}
+                {run.status === "running" ? " （実行中・1.5秒ごとに自動更新）" : ""}
               </li>
+              {run.message && (
+                <li style={{ color: "#93c5fd" }}>{run.message}</li>
+              )}
+              {run.error && <li style={{ color: "#fca5a5" }}>{run.error}</li>}
               <li>
                 合計 {run.total ?? 0} / 成功 {run.passed ?? 0} / 失敗 {run.failed ?? 0} / スキップ{" "}
                 {run.skipped ?? 0}
