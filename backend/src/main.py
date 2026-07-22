@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+import time
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import HTMLResponse
 
 from src.api.ai import router as ai_router
+from src.auth import install_auth_middleware
 from src.config import get_settings
 from src.db import init_database
 
@@ -15,11 +17,16 @@ from src.db import init_database
 async def lifespan(_: FastAPI):
     init_database()
     try:
+        from src.services.projects import seed_default_project
+
+        seed_default_project()
+    except Exception:
+        pass
+    try:
         from src.scripts.init_dynamo import main as init_dyn
 
         init_dyn()
     except Exception:
-        # Railway / no DynamoDB Local: seed in-memory prompts
         try:
             from src.services.prompts import seed_default_prompts
 
@@ -32,10 +39,10 @@ async def lifespan(_: FastAPI):
 app = FastAPI(
     title="Bedrock Knowledge Base Platform",
     description=(
-        "エンタープライズ向け生成AI: Text/Image/Embedding/Guardrails/"
-        "Prompt Management/Model Evaluation + RAG/Agents"
+        "受託/自社向け生成AI運用基盤: Text/Image/Embedding/Guardrails/"
+        "Prompt/Evaluation/RAG/Agents + Projects/Telemetry/Feedback"
     ),
-    version="0.1.0",
+    version="0.2.0",
     lifespan=lifespan,
 )
 
@@ -49,6 +56,36 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+install_auth_middleware(app)
+
+
+@app.middleware("http")
+async def telemetry_middleware(request: Request, call_next):
+    start = time.perf_counter()
+    response = await call_next(request)
+    if not get_settings().enable_telemetry:
+        return response
+    path = request.url.path
+    if not path.startswith("/api/"):
+        return response
+    try:
+        from src.services.telemetry import record_event
+
+        project = getattr(request.state, "project", None) or {}
+        record_event(
+            path=path,
+            method=request.method,
+            status_code=response.status_code,
+            latency_ms=int((time.perf_counter() - start) * 1000),
+            project_id=project.get("project_id"),
+            mock=get_settings().mock_mode,
+            meta={"env": get_settings().app_env},
+        )
+    except Exception:
+        pass
+    return response
+
+
 app.include_router(ai_router)
 
 
@@ -63,12 +100,12 @@ main{width:min(560px,calc(100% - 2rem))}
 a{color:#5ec8ff} h1 span{color:#5ec8ff}
 </style></head><body><main>
 <h1>Bedrock <span>KB</span> API</h1>
-<p>S3 → Knowledge Base → Bedrock → Lambda → API Gateway → Web</p>
+<p>Prototype → Staging → Production · DS + Eng collaboration</p>
 <ul>
 <li><a href="http://localhost:3010">Web UI</a></li>
 <li><a href="/docs">Swagger</a></li>
 <li><a href="/health">Health</a></li>
-<li><a href="/api/use-cases">Use cases</a></li>
+<li><a href="/api/ops/summary">Ops summary</a></li>
 </ul>
 </main></body></html>"""
 
@@ -79,6 +116,8 @@ def health():
     return {
         "status": "ok",
         "app": "bedrock-knowledge-base",
+        "version": "0.2.0",
+        "app_env": s.app_env,
         "mock_mode": s.mock_mode,
         "region": s.aws_region,
         "features": [
@@ -90,7 +129,14 @@ def health():
             "model_evaluation",
             "rag_knowledge_bases",
             "agents",
+            "projects",
+            "telemetry",
+            "feedback",
+            "datasets",
+            "kb_ingest",
         ],
         "knowledge_base_configured": bool(s.bedrock_knowledge_base_id),
         "guardrail_configured": bool(s.bedrock_guardrail_id),
+        "s3_configured": bool(s.s3_documents_bucket),
+        "require_api_key": s.require_api_key,
     }

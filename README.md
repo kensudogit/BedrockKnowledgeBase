@@ -23,6 +23,20 @@ AWS 上のエンタープライズ向け生成 AI 基盤（ローカル開発 + 
 - **Guardrails** — RAG 入出力チェック
 - **Evaluation** — キーワード + 出典ヒットの複合スコア
 
+### 受託 / 自社プロダクト・DS 連携（MLOps）
+
+| 機能 | 説明 |
+|---|---|
+| Projects | 顧客/案件単位の API Key 分離（`/ops`, `POST /api/projects`） |
+| Telemetry | API レイテンシ・エラー率（`/api/metrics/summary`） |
+| Feedback | チャット 👍/👎 → DS 分析用エクスポート |
+| Datasets | `backend/datasets/*.json` + `POST /api/datasets` |
+| Eval CLI | `python -m src.scripts.run_eval --fail-under 0.4`（CI ゲート） |
+| KB Ingest | ローカル索引 + S3/KB 同期ジョブ（`POST /api/documents/kb-ingest`） |
+| Env | `APP_ENV=development\|staging\|production` |
+
+詳細: [docs/DS_WORKFLOW.md](docs/DS_WORKFLOW.md)
+
 ## 技術スタック
 
 - **Backend**: Python 3.12 / FastAPI / boto3 / SQLAlchemy

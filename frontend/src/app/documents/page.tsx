@@ -45,6 +45,20 @@ export default function DocumentsPage() {
     }
   }
 
+  async function ingestKb() {
+    setBusy(true);
+    setMsg("");
+    try {
+      const r = await api.kbIngest(filename, content);
+      setMsg(`KB ingest: ${String(r.status)} ${String(r.message || r.s3_key || "")}`);
+      reload();
+    } catch (e) {
+      setMsg(String(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function onFile(file: File | null) {
     if (!file) return;
     setBusy(true);
@@ -89,6 +103,9 @@ export default function DocumentsPage() {
             <input value={filename} onChange={(e) => setFilename(e.target.value)} />
             <button type="button" disabled={busy} onClick={ingest}>
               索引に追加
+            </button>
+            <button type="button" className="btn-ghost" disabled={busy} onClick={ingestKb}>
+              S3 / KB 取込
             </button>
           </div>
           <textarea value={content} onChange={(e) => setContent(e.target.value)} rows={12} />

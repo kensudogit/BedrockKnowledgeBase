@@ -10,9 +10,13 @@ from src.services.agents import invoke_agent
 from src.services.bedrock_embed import embed_texts
 from src.services.bedrock_image import decode_preview_data_url, generate_image
 from src.services.bedrock_text import generate_text
+from src.services.datasets import get_dataset, list_datasets, save_dataset
 from src.services.documents import delete_document, ingest_text, list_documents
-from src.services.evaluation import list_evaluations, run_model_evaluation
+from src.services.evaluation import compare_evaluations, list_evaluations, run_model_evaluation
+from src.services.feedback import add_feedback, feedback_summary, list_feedback
 from src.services.guardrails import apply_guardrails
+from src.services.kb_ingest import get_ingestion_status, ingest_to_knowledge_base, list_ingest_jobs
+from src.services.projects import create_project, list_projects
 from src.services.prompts import get_prompt, list_prompts, render_prompt, seed_default_prompts, upsert_prompt
 from src.services.rag import rag_answer, retrieve_knowledge_base
 from src.services.sessions import (
@@ -22,6 +26,7 @@ from src.services.sessions import (
     history_for_rag,
     list_sessions,
 )
+from src.services.telemetry import summarize as telemetry_summary
 
 router = APIRouter(prefix="/api", tags=["ai"])
 
@@ -94,6 +99,47 @@ class AgentRequest(BaseModel):
     session_id: Optional[str] = None
 
 
+class FeedbackRequest(BaseModel):
+    rating: int  # 1 or -1
+    session_id: Optional[str] = None
+    message_index: Optional[int] = None
+    comment: str = ""
+    use_case: Optional[str] = None
+    model_id: Optional[str] = None
+    answer_preview: str = ""
+    project_id: Optional[str] = None
+
+
+class ProjectCreate(BaseModel):
+    name: str
+    client_name: str = ""
+    env: str = "development"
+    api_key: Optional[str] = None
+    notes: str = ""
+
+
+class DatasetCreate(BaseModel):
+    name: str
+    items: list[dict[str, Any]]
+    dataset_id: Optional[str] = None
+    description: str = ""
+    version: str = "1.0.0"
+
+
+class EvalRunRequest(BaseModel):
+    name: Optional[str] = None
+    dataset_id: str = "golden_default"
+    project_id: Optional[str] = None
+    fail_under: Optional[float] = None
+
+
+class IngestKbRequest(BaseModel):
+    filename: str
+    content: str
+    content_type: str = "text/markdown"
+    project_id: Optional[str] = None
+
+
 @router.post("/text/generate")
 def text_generate(body: TextRequest):
     return generate_text(
@@ -158,13 +204,30 @@ def prompts_get(prompt_id: str):
 
 
 @router.post("/evaluation/run")
-def evaluation_run(name: Optional[str] = None):
-    return run_model_evaluation(name=name)
+def evaluation_run(body: Optional[EvalRunRequest] = None, name: Optional[str] = None):
+    req = body or EvalRunRequest(name=name)
+    try:
+        return run_model_evaluation(
+            name=req.name,
+            dataset_id=req.dataset_id,
+            project_id=req.project_id,
+            fail_under=req.fail_under,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
 
 
 @router.get("/evaluation")
 def evaluation_list():
     return {"items": list_evaluations()}
+
+
+@router.get("/evaluation/compare")
+def evaluation_compare(a: str, b: str):
+    try:
+        return compare_evaluations(a, b)
+    except KeyError:
+        raise HTTPException(404, "eval not found")
 
 
 @router.post("/rag/query")
@@ -286,6 +349,28 @@ def documents_create(body: DocIngest):
     )
 
 
+@router.post("/documents/kb-ingest")
+def documents_kb_ingest(body: IngestKbRequest):
+    if not body.content.strip():
+        raise HTTPException(400, "content is empty")
+    return ingest_to_knowledge_base(
+        filename=body.filename,
+        content=body.content,
+        content_type=body.content_type,
+        project_id=body.project_id,
+    )
+
+
+@router.get("/documents/ingest-jobs")
+def documents_ingest_jobs():
+    return {"items": list_ingest_jobs()}
+
+
+@router.get("/documents/ingest-jobs/{ingestion_job_id}")
+def documents_ingest_status(ingestion_job_id: str):
+    return get_ingestion_status(ingestion_job_id)
+
+
 @router.post("/documents/upload")
 async def documents_upload(file: UploadFile = File(...)):
     raw = await file.read()
@@ -330,4 +415,88 @@ def use_cases():
             {"id": "ocr", "label": "OCRとの連携"},
             {"id": "ai_agent", "label": "AIエージェント"},
         ]
+    }
+
+
+@router.get("/projects")
+def projects_list():
+    return {"items": list_projects()}
+
+
+@router.post("/projects")
+def projects_create(body: ProjectCreate):
+    return create_project(
+        name=body.name,
+        client_name=body.client_name,
+        env=body.env,
+        api_key=body.api_key,
+        notes=body.notes,
+    )
+
+
+@router.post("/feedback")
+def feedback_create(body: FeedbackRequest):
+    try:
+        return add_feedback(
+            rating=body.rating,
+            session_id=body.session_id,
+            message_index=body.message_index,
+            comment=body.comment,
+            use_case=body.use_case,
+            model_id=body.model_id,
+            answer_preview=body.answer_preview,
+            project_id=body.project_id,
+        )
+    except ValueError as exc:
+        raise HTTPException(400, str(exc)) from exc
+
+
+@router.get("/feedback")
+def feedback_list():
+    return {"items": list_feedback(), "summary": feedback_summary()}
+
+
+@router.get("/datasets")
+def datasets_list():
+    return {"items": list_datasets()}
+
+
+@router.get("/datasets/{dataset_id}")
+def datasets_get(dataset_id: str):
+    ds = get_dataset(dataset_id)
+    if not ds:
+        raise HTTPException(404, "dataset not found")
+    return ds
+
+
+@router.post("/datasets")
+def datasets_create(body: DatasetCreate):
+    return save_dataset(
+        name=body.name,
+        items=body.items,
+        dataset_id=body.dataset_id,
+        description=body.description,
+        version=body.version,
+    )
+
+
+@router.get("/metrics/summary")
+def metrics_summary():
+    return telemetry_summary()
+
+
+@router.get("/ops/summary")
+def ops_summary():
+    from src.config import get_settings
+
+    s = get_settings()
+    return {
+        "app_env": s.app_env,
+        "mock_mode": s.mock_mode,
+        "telemetry": telemetry_summary(),
+        "feedback": feedback_summary(),
+        "projects": list_projects(),
+        "datasets": list_datasets(),
+        "ingest_jobs": list_ingest_jobs(10),
+        "recent_evals": list_evaluations(5),
     }

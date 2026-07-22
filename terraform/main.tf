@@ -105,16 +105,40 @@ resource "aws_lambda_function" "api" {
 
   environment {
     variables = {
+      APP_ENV                    = var.app_env
       BEDROCK_TEXT_MODEL_ID      = var.bedrock_text_model_id
       BEDROCK_EMBED_MODEL_ID     = var.bedrock_embed_model_id
       BEDROCK_KNOWLEDGE_BASE_ID  = var.bedrock_knowledge_base_id
+      BEDROCK_DATA_SOURCE_ID     = var.bedrock_data_source_id
       BEDROCK_GUARDRAIL_ID       = var.bedrock_guardrail_id
       BEDROCK_GUARDRAIL_VERSION  = var.bedrock_guardrail_version
       S3_DOCUMENTS_BUCKET        = aws_s3_bucket.documents.bucket
       DYNAMODB_TABLE_PROMPTS     = aws_dynamodb_table.prompts.name
       DYNAMODB_TABLE_EVALS       = aws_dynamodb_table.evals.name
-      USE_BEDROCK_MOCK           = "false"
+      USE_BEDROCK_MOCK           = var.use_bedrock_mock
+      REQUIRE_API_KEY            = var.require_api_key
+      ENABLE_TELEMETRY           = "true"
     }
+  }
+}
+
+resource "aws_cloudwatch_log_group" "api" {
+  name              = "/aws/lambda/${aws_lambda_function.api.function_name}"
+  retention_in_days = var.log_retention_days
+}
+
+resource "aws_cloudwatch_metric_alarm" "api_errors" {
+  alarm_name          = "${var.project}-api-errors"
+  comparison_operator = "GreaterThanThreshold"
+  evaluation_periods  = 1
+  metric_name         = "Errors"
+  namespace           = "AWS/Lambda"
+  period              = 300
+  statistic           = "Sum"
+  threshold           = 5
+  alarm_description   = "Bedrock KB API Lambda errors"
+  dimensions = {
+    FunctionName = aws_lambda_function.api.function_name
   }
 }
 

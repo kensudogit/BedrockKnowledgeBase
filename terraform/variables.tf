@@ -41,3 +41,28 @@ variable "bedrock_guardrail_version" {
   type    = string
   default = "DRAFT"
 }
+
+variable "bedrock_data_source_id" {
+  type    = string
+  default = ""
+}
+
+variable "app_env" {
+  type    = string
+  default = "staging"
+}
+
+variable "use_bedrock_mock" {
+  type    = string
+  default = "false"
+}
+
+variable "require_api_key" {
+  type    = string
+  default = "true"
+}
+
+variable "log_retention_days" {
+  type    = number
+  default = 30
+}

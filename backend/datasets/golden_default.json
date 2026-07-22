@@ -1,0 +1,29 @@
+{
+  "dataset_id": "golden_default",
+  "name": "Default RAG Golden Set",
+  "version": "1.0.0",
+  "description": "受託/自社共通の初期ゴールデンセット。DS が複製して拡張する。",
+  "items": [
+    {
+      "id": "g1",
+      "prompt": "有給休暇の申請手順を教えて",
+      "expected_keywords": ["申請", "勤怠", "承認"],
+      "expected_sources": ["有給", "休暇", "faq", "hr", "人事"],
+      "use_case": "faq"
+    },
+    {
+      "id": "g2",
+      "prompt": "情報セキュリティの基本方針の要点は？",
+      "expected_keywords": ["機密", "アクセス", "セキュリティ"],
+      "expected_sources": ["セキュリティ", "security", "情報"],
+      "use_case": "document_search"
+    },
+    {
+      "id": "g3",
+      "prompt": "契約書の秘密保持で確認すべき点は？",
+      "expected_keywords": ["秘密", "期間", "例外"],
+      "expected_sources": ["契約", "秘密", "nda", "contract"],
+      "use_case": "contract_review"
+    }
+  ]
+}

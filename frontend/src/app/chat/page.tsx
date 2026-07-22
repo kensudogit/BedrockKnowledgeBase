@@ -130,6 +130,48 @@ function ChatPageInner() {
               {m.role === "assistant" && m.citations?.length ? (
                 <CitationList citations={m.citations} />
               ) : null}
+              {m.role === "assistant" ? (
+                <div className="feedback-row">
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    disabled={busy}
+                    onClick={() =>
+                      void api
+                        .feedback({
+                          rating: 1,
+                          session_id: sessionId,
+                          message_index: i,
+                          use_case: useCase,
+                          answer_preview: m.content,
+                        })
+                        .then(() => setMeta((prev) => `${prev} · 👍`.trim()))
+                        .catch((e) => setError(String(e)))
+                    }
+                  >
+                    👍 有用
+                  </button>
+                  <button
+                    type="button"
+                    className="btn-ghost"
+                    disabled={busy}
+                    onClick={() =>
+                      void api
+                        .feedback({
+                          rating: -1,
+                          session_id: sessionId,
+                          message_index: i,
+                          use_case: useCase,
+                          answer_preview: m.content,
+                        })
+                        .then(() => setMeta((prev) => `${prev} · 👎`.trim()))
+                        .catch((e) => setError(String(e)))
+                    }
+                  >
+                    👎 要改善
+                  </button>
+                </div>
+              ) : null}
             </article>
           ))}
           {busy ? <p className="muted">回答生成中…</p> : null}

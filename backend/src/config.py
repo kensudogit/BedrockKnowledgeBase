@@ -14,7 +14,7 @@ class Settings(BaseSettings):
         extra="ignore",
     )
 
-    app_env: str = "development"
+    app_env: str = "development"  # development | staging | production
     aws_region: str = "ap-northeast-1"
     cors_origins: str = "http://localhost:3010,*"
     database_url: str = "postgresql://bkb_user:bkb_password@localhost:5435/bkb_db"
@@ -33,15 +33,23 @@ class Settings(BaseSettings):
     bedrock_image_model_id: str = "amazon.titan-image-generator-v1"
     bedrock_embed_model_id: str = "amazon.titan-embed-text-v2:0"
     bedrock_knowledge_base_id: str = ""
+    bedrock_data_source_id: str = ""
     bedrock_guardrail_id: str = ""
     bedrock_guardrail_version: str = "DRAFT"
     bedrock_agent_id: str = ""
     bedrock_agent_alias_id: str = ""
     s3_documents_bucket: str = ""
 
+    # Auth: comma-separated keys; require_api_key=true for staging/prod client demos
+    api_keys: str = ""
+    require_api_key: bool = False
+    default_project_id: str = ""
+
     use_bedrock_mock: bool = True
     enable_guardrails: bool = True
     enable_agents: bool = True
+    enable_telemetry: bool = True
+    eval_fail_under: float = 0.0
 
     @property
     def cors_origin_list(self) -> list[str]:

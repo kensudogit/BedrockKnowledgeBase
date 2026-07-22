@@ -139,8 +139,45 @@ export const api = {
       method: "POST",
       body: JSON.stringify(body),
     }),
-  evalRun: () => json<Record<string, unknown>>("/api/evaluation/run", { method: "POST" }),
+  evalRun: (payload?: { dataset_id?: string; name?: string; fail_under?: number }) =>
+    json<Record<string, unknown>>("/api/evaluation/run", {
+      method: "POST",
+      body: JSON.stringify(payload || { dataset_id: "golden_default" }),
+    }),
   evals: () => json<{ items: Array<Record<string, unknown>> }>("/api/evaluation"),
+  datasets: () =>
+    json<{ items: Array<{ dataset_id: string; name: string; n_items: number; version?: string }> }>(
+      "/api/datasets",
+    ),
+  feedback: (payload: {
+    rating: number;
+    session_id?: string | null;
+    message_index?: number;
+    comment?: string;
+    use_case?: string;
+    answer_preview?: string;
+  }) =>
+    json<Record<string, unknown>>("/api/feedback", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  feedbackList: () =>
+    json<{ items: unknown[]; summary: { n: number; up: number; down: number; approval_rate: number | null } }>(
+      "/api/feedback",
+    ),
+  projects: () => json<{ items: Array<Record<string, unknown>> }>("/api/projects"),
+  createProject: (body: { name: string; client_name?: string; env?: string; notes?: string }) =>
+    json<Record<string, unknown>>("/api/projects", {
+      method: "POST",
+      body: JSON.stringify(body),
+    }),
+  opsSummary: () => json<Record<string, unknown>>("/api/ops/summary"),
+  metricsSummary: () => json<Record<string, unknown>>("/api/metrics/summary"),
+  kbIngest: (filename: string, content: string) =>
+    json<Record<string, unknown>>("/api/documents/kb-ingest", {
+      method: "POST",
+      body: JSON.stringify({ filename, content }),
+    }),
   agent: (message: string, session_id?: string | null) =>
     json<{ answer: string; plan?: string; mock?: boolean; session_id?: string }>(
       "/api/agents/invoke",

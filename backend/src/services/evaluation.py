@@ -6,33 +6,11 @@ from uuid import uuid4
 
 from src.aws_clients import dynamodb_resource
 from src.config import get_settings
+from src.services import persist
+from src.services.datasets import get_dataset
 from src.services.rag import rag_answer
 
 _MEM: list[dict[str, Any]] = []
-
-GOLDEN = [
-    {
-        "id": "g1",
-        "prompt": "有給休暇の申請手順を教えて",
-        "expected_keywords": ["申請", "勤怠", "承認"],
-        "expected_sources": ["有給", "休暇", "faq", "hr", "人事"],
-        "use_case": "faq",
-    },
-    {
-        "id": "g2",
-        "prompt": "情報セキュリティの基本方針の要点は？",
-        "expected_keywords": ["機密", "アクセス", "セキュリティ"],
-        "expected_sources": ["セキュリティ", "security", "情報"],
-        "use_case": "document_search",
-    },
-    {
-        "id": "g3",
-        "prompt": "契約書の秘密保持で確認すべき点は？",
-        "expected_keywords": ["秘密", "期間", "例外"],
-        "expected_sources": ["契約", "秘密", "nda", "contract"],
-        "use_case": "contract_review",
-    },
-]
 
 
 def _score_keywords(answer: str, keywords: list[str]) -> float:
@@ -45,19 +23,27 @@ def _score_keywords(answer: str, keywords: list[str]) -> float:
 def _score_retrieval(citations: list[dict[str, Any]], expected_sources: list[str]) -> float:
     if not expected_sources:
         return 1.0 if citations else 0.0
-    blob = " ".join(
-        f"{c.get('source', '')} {c.get('text', '')}" for c in citations
-    ).lower()
+    blob = " ".join(f"{c.get('source', '')} {c.get('text', '')}" for c in citations).lower()
     hit = sum(1 for s in expected_sources if s.lower() in blob)
     return round(hit / len(expected_sources), 3)
 
 
-def run_model_evaluation(name: str | None = None) -> dict[str, Any]:
+def run_model_evaluation(
+    name: str | None = None,
+    *,
+    dataset_id: str = "golden_default",
+    project_id: str | None = None,
+    fail_under: float | None = None,
+) -> dict[str, Any]:
     settings = get_settings()
+    ds = get_dataset(dataset_id)
+    if not ds or not ds.get("items"):
+        raise ValueError(f"dataset not found or empty: {dataset_id}")
+
     samples = []
     kw_scores = []
     ret_scores = []
-    for g in GOLDEN:
+    for g in ds["items"]:
         out = rag_answer(
             g["prompt"],
             use_case=g.get("use_case", "document_search"),
@@ -65,15 +51,15 @@ def run_model_evaluation(name: str | None = None) -> dict[str, Any]:
         )
         answer = out.get("answer") or ""
         cites = out.get("citations") or []
-        kw = _score_keywords(answer, g["expected_keywords"])
+        kw = _score_keywords(answer, g.get("expected_keywords") or [])
         ret = _score_retrieval(cites, g.get("expected_sources") or [])
         combined = round(0.55 * kw + 0.45 * ret, 3)
         kw_scores.append(kw)
         ret_scores.append(ret)
         samples.append(
             {
-                "id": g["id"],
-                "prompt": g["prompt"],
+                "id": g.get("id"),
+                "prompt": g.get("prompt"),
                 "answer": answer[:500],
                 "keyword_score": kw,
                 "retrieval_score": ret,
@@ -88,23 +74,30 @@ def run_model_evaluation(name: str | None = None) -> dict[str, Any]:
     metrics = {
         "avg_keyword_score": round(sum(kw_scores) / n, 3),
         "avg_retrieval_score": round(sum(ret_scores) / n, 3),
-        "avg_combined_score": round(
-            sum(s["combined_score"] for s in samples) / n,
-            3,
-        ),
+        "avg_combined_score": round(sum(s["combined_score"] for s in samples) / n, 3),
         "n_samples": len(samples),
         "mode": "rag",
+        "dataset_id": dataset_id,
+        "dataset_version": ds.get("version"),
         "model_id": settings.bedrock_text_model_id if not settings.mock_mode else "local-rag",
+        "app_env": settings.app_env,
     }
+    if fail_under is not None:
+        metrics["fail_under"] = fail_under
+        metrics["passed"] = metrics["avg_combined_score"] >= fail_under
+
     run = {
         "eval_id": str(uuid4()),
+        "project_id": project_id,
         "name": name or f"eval-{datetime.now(timezone.utc).strftime('%Y%m%d%H%M%S')}",
+        "dataset_id": dataset_id,
         "model_id": metrics["model_id"],
         "metrics": metrics,
         "samples": samples,
         "created_at": datetime.now(timezone.utc).isoformat(),
     }
 
+    persist.append("eval_runs", run)
     try:
         table = dynamodb_resource().Table(settings.dynamodb_table_evals)
         table.put_item(Item=run)
@@ -115,10 +108,26 @@ def run_model_evaluation(name: str | None = None) -> dict[str, Any]:
 
 def list_evaluations(limit: int = 20) -> list[dict[str, Any]]:
     settings = get_settings()
+    file_items = persist.load("eval_runs")
     try:
         resp = dynamodb_resource().Table(settings.dynamodb_table_evals).scan(Limit=limit)
         items = resp.get("Items", [])
-        items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
-        return items[:limit]
     except Exception:
-        return _MEM[:limit]
+        items = list(_MEM)
+    merged = {i.get("eval_id"): i for i in file_items + items if i.get("eval_id")}
+    out = list(merged.values())
+    out.sort(key=lambda x: x.get("created_at", ""), reverse=True)
+    return out[:limit]
+
+
+def compare_evaluations(eval_a: str, eval_b: str) -> dict[str, Any]:
+    runs = {r.get("eval_id"): r for r in list_evaluations(100)}
+    a = runs.get(eval_a)
+    b = runs.get(eval_b)
+    if not a or not b:
+        raise KeyError("eval not found")
+    ma = a.get("metrics") or {}
+    mb = b.get("metrics") or {}
+    keys = ("avg_combined_score", "avg_keyword_score", "avg_retrieval_score")
+    delta = {k: round(float(mb.get(k) or 0) - float(ma.get(k) or 0), 3) for k in keys}
+    return {"a": a.get("eval_id"), "b": b.get("eval_id"), "delta_b_minus_a": delta, "a_metrics": ma, "b_metrics": mb}

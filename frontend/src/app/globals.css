@@ -138,6 +138,8 @@ button:disabled { opacity: .55; cursor: not-allowed; }
 .metric span { display: block; color: var(--muted); font-size: .72rem; margin-bottom: .25rem; }
 .metric strong { font-size: 1.25rem; font-family: var(--display); }
 .eval-samples { display: flex; flex-direction: column; gap: .55rem; }
+.feedback-row { display: flex; gap: .4rem; margin-top: .55rem; flex-wrap: wrap; }
+.feedback-row .btn-ghost { font-size: .78rem; padding: .3rem .55rem; }
 @media (max-width: 860px) {
   .chat-composer { grid-template-columns: 1fr; }
   .metric-row { grid-template-columns: repeat(2, minmax(0, 1fr)); }

@@ -43,6 +43,8 @@ export default function HomePage() {
             <li><Link href="/guardrails">④ Guardrails</Link></li>
             <li><Link href="/prompts">⑤ Prompt Management</Link></li>
             <li><Link href="/evaluation">⑥ Model Evaluation</Link></li>
+            <li><Link href="/ops">Ops / MLOps（Projects · Telemetry · Feedback）</Link></li>
+            <li><Link href="/documents">Documents / KB Ingest</Link></li>
           </ul>
         </article>
         <article className="panel">

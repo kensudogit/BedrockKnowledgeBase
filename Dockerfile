@@ -24,6 +24,7 @@ RUN pip install --no-cache-dir -r requirements.txt
 
 COPY backend/ .
 COPY samples/ /app/samples/
+COPY backend/datasets/ /app/datasets/
 COPY --from=frontend-builder /app/frontend /app/frontend
 
 COPY start.sh /app/start.sh

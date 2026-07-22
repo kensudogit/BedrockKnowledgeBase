@@ -30,10 +30,12 @@ terraform/*.tfstate*
 terraform/*.tfvars
 !terraform/*.tfvars.example
 
-# Data / uploads
+# Data / uploads / ops persistence
 data/uploads/
 data/cache/
+data/ops/
 backend/data/
+export_ops/
 *.pdf
 !samples/**/*.md
 

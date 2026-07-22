@@ -13,6 +13,7 @@ const links = [
   { href: "/prompts", label: "Prompts" },
   { href: "/evaluation", label: "Evaluation" },
   { href: "/agents", label: "Agents" },
+  { href: "/ops", label: "Ops" },
 ];
 
 export function Nav() {
