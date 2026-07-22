@@ -16,7 +16,27 @@ def generate_text(
     apply_guardrail: bool = True,
 ) -> dict[str, Any]:
     settings = get_settings()
-    if settings.mock_mode:
+    provider = settings.llm_provider
+
+    if provider == "openai":
+        from src.services.openai_text import generate_text_openai
+
+        out = generate_text_openai(
+            prompt,
+            system=system,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
+        if apply_guardrail and settings.enable_guardrails:
+            from src.services.guardrails import apply_guardrails
+
+            gr = apply_guardrails(out["text"])
+            out["guardrail"] = gr
+            if gr.get("action") == "GUARDRAIL_INTERVENED":
+                out["text"] = gr["outputs"][0]["text"]
+        return out
+
+    if provider == "mock" or settings.mock_mode:
         out = mock_text(prompt, system=system)
         if apply_guardrail and settings.enable_guardrails:
             from src.services.guardrails import apply_guardrails

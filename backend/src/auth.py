@@ -33,7 +33,7 @@ def project_from_headers(
 
 
 def install_auth_middleware(app) -> None:
-    """Optional soft auth: attach project to request.state when key present."""
+    """Optional soft auth: attach project to request.state when key/JWT present."""
 
     @app.middleware("http")
     async def _auth_mw(request: Request, call_next: Callable):
@@ -41,12 +41,36 @@ def install_auth_middleware(app) -> None:
         pid = request.headers.get("X-Project-Id")
         settings = get_settings()
         path = request.url.path
-        public = path in ("/", "/health", "/docs", "/openapi.json", "/redoc") or path.startswith(
-            "/docs"
-        )
-        if settings.require_api_key and not key and path.startswith("/api/") and not public:
+        public = path in (
+            "/",
+            "/health",
+            "/docs",
+            "/openapi.json",
+            "/redoc",
+            "/api/auth/token",
+        ) or path.startswith("/docs")
+
+        auth = request.headers.get("Authorization") or ""
+        jwt_claims = None
+        if auth.lower().startswith("bearer ") and settings.jwt_configured:
+            from src.services.jwt_tokens import verify_access_token
+
+            jwt_claims = verify_access_token(auth.split(" ", 1)[1].strip())
+            if jwt_claims is None and settings.require_api_key and path.startswith("/api/") and not public:
+                from fastapi.responses import JSONResponse
+
+                return JSONResponse({"detail": "invalid or expired JWT"}, status_code=401)
+
+        if (
+            settings.require_api_key
+            and not key
+            and jwt_claims is None
+            and path.startswith("/api/")
+            and not public
+        ):
             from fastapi.responses import JSONResponse
 
-            return JSONResponse({"detail": "X-API-Key required"}, status_code=401)
+            return JSONResponse({"detail": "X-API-Key or Bearer JWT required"}, status_code=401)
         request.state.project = resolve_project(key, pid) or seed_default_project()
+        request.state.jwt_claims = jwt_claims
         return await call_next(request)

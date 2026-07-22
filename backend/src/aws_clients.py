@@ -45,6 +45,7 @@ def s3_client():
 def dynamodb_resource():
     s = get_settings()
     kw = _base_kwargs()
-    if s.dynamodb_endpoint:
-        kw["endpoint_url"] = s.dynamodb_endpoint
+    endpoint = s.effective_dynamodb_endpoint
+    if endpoint:
+        kw["endpoint_url"] = endpoint
     return boto3.resource("dynamodb", **kw)

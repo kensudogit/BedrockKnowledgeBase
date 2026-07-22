@@ -1,10 +1,20 @@
 from functools import lru_cache
 from pathlib import Path
+from urllib.parse import urlparse
 
+from pydantic import field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 
 _ROOT = Path(__file__).resolve().parents[2]
 _ENV = _ROOT / ".env"
+
+
+def normalize_database_url(url: str) -> str:
+    """Railway often provides postgres://; SQLAlchemy wants postgresql://."""
+    u = (url or "").strip()
+    if u.startswith("postgres://"):
+        u = "postgresql://" + u[len("postgres://") :]
+    return u
 
 
 class Settings(BaseSettings):
@@ -40,6 +50,11 @@ class Settings(BaseSettings):
     bedrock_agent_alias_id: str = ""
     s3_documents_bucket: str = ""
 
+    # Railway / shared secrets
+    openai_api_key: str = ""
+    openai_text_model_id: str = "gpt-4o-mini"
+    jwt_secret: str = ""
+
     # Auth: comma-separated keys; require_api_key=true for staging/prod client demos
     api_keys: str = ""
     require_api_key: bool = False
@@ -51,15 +66,75 @@ class Settings(BaseSettings):
     enable_telemetry: bool = True
     eval_fail_under: float = 0.0
 
+    @field_validator("database_url", mode="before")
+    @classmethod
+    def _normalize_db(cls, v: object) -> object:
+        if isinstance(v, str):
+            return normalize_database_url(v)
+        return v
+
+    @field_validator("dynamodb_endpoint", mode="before")
+    @classmethod
+    def _strip_local_dynamo_in_hint(cls, v: object) -> object:
+        # Treat blank / whitespace as unset
+        if isinstance(v, str):
+            return v.strip()
+        return v
+
     @property
     def cors_origin_list(self) -> list[str]:
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
+    def is_production(self) -> bool:
+        return self.app_env.lower() in {"production", "prod", "staging"}
+
+    @property
+    def effective_dynamodb_endpoint(self) -> str:
+        """Ignore localhost DynamoDB endpoint on Railway/production."""
+        ep = (self.dynamodb_endpoint or "").strip()
+        if self.is_production and ("localhost" in ep or "127.0.0.1" in ep):
+            return ""
+        return ep
+
+    @property
+    def database_configured(self) -> bool:
+        u = self.database_url.lower()
+        if not u:
+            return False
+        # default local template without Railway host
+        if "localhost:5435" in u or "127.0.0.1:5435" in u:
+            return False
+        host = urlparse(u).hostname or ""
+        return bool(host) and host not in {"localhost", "127.0.0.1"}
+
+    @property
+    def openai_configured(self) -> bool:
+        return bool(self.openai_api_key.strip())
+
+    @property
+    def jwt_configured(self) -> bool:
+        return bool(self.jwt_secret.strip())
+
+    @property
+    def bedrock_credentials_configured(self) -> bool:
+        return bool(self.aws_access_key_id.strip())
+
+    @property
     def mock_mode(self) -> bool:
+        """True when Bedrock Runtime path is mocked / unavailable."""
         return bool(self.use_bedrock_mock) or not (
             self.aws_access_key_id or self.bedrock_knowledge_base_id
         )
+
+    @property
+    def llm_provider(self) -> str:
+        """Provider used for text generation (chat / RAG answer)."""
+        if not self.use_bedrock_mock and self.bedrock_credentials_configured:
+            return "bedrock"
+        if self.openai_configured:
+            return "openai"
+        return "mock"
 
 
 @lru_cache

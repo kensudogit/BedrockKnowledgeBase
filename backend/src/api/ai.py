@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Any, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, File, HTTPException, UploadFile
+from fastapi import APIRouter, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
 
 from src.services.agents import invoke_agent
@@ -154,6 +154,41 @@ class IngestKbRequest(BaseModel):
     content: str
     content_type: str = "text/markdown"
     project_id: Optional[str] = None
+
+
+class TokenRequest(BaseModel):
+    subject: str = "bkb-user"
+    expires_in_sec: int = 3600
+
+
+@router.post("/auth/token")
+def auth_token(body: TokenRequest):
+    """Issue Bearer JWT signed with Railway JWT_SECRET."""
+    from src.config import get_settings
+    from src.services.jwt_tokens import issue_access_token
+
+    if not get_settings().jwt_configured:
+        raise HTTPException(503, "JWT_SECRET is not configured")
+    try:
+        return issue_access_token(subject=body.subject, expires_in_sec=body.expires_in_sec)
+    except Exception as exc:
+        raise HTTPException(500, str(exc)) from exc
+
+
+@router.get("/auth/me")
+def auth_me(authorization: Optional[str] = Header(default=None)):
+    """Validate Authorization: Bearer <jwt> signed with JWT_SECRET."""
+    from src.config import get_settings
+    from src.services.jwt_tokens import verify_access_token
+
+    if not get_settings().jwt_configured:
+        raise HTTPException(503, "JWT_SECRET is not configured")
+    if not authorization or not authorization.lower().startswith("bearer "):
+        raise HTTPException(401, "Authorization: Bearer <token> required")
+    claims = verify_access_token(authorization.split(" ", 1)[1].strip())
+    if not claims:
+        raise HTTPException(401, "invalid or expired JWT")
+    return {"ok": True, "claims": claims}
 
 
 @router.post("/text/generate")

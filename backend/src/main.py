@@ -113,12 +113,16 @@ a{color:#5ec8ff} h1 span{color:#5ec8ff}
 @app.get("/health")
 def health():
     s = get_settings()
+    from src.db import database_ping
+
+    db = database_ping()
     return {
-        "status": "ok",
+        "status": "ok" if db.get("ok") or not s.database_configured else "degraded",
         "app": "bedrock-knowledge-base",
         "version": "0.2.0",
         "app_env": s.app_env,
         "mock_mode": s.mock_mode,
+        "llm_provider": s.llm_provider,
         "region": s.aws_region,
         "features": [
             "text_generation",
@@ -138,9 +142,15 @@ def health():
             "experiments",
             "model_registry",
             "accuracy_monitoring",
+            "openai",
+            "jwt_auth",
         ],
         "knowledge_base_configured": bool(s.bedrock_knowledge_base_id),
         "guardrail_configured": bool(s.bedrock_guardrail_id),
         "s3_configured": bool(s.s3_documents_bucket),
+        "database_configured": s.database_configured,
+        "database_ok": bool(db.get("ok")),
+        "openai_configured": s.openai_configured,
+        "jwt_configured": s.jwt_configured,
         "require_api_key": s.require_api_key,
     }
