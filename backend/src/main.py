@@ -144,6 +144,7 @@ def health():
             "accuracy_monitoring",
             "openai",
             "jwt_auth",
+            "test_runner",
         ],
         "knowledge_base_configured": bool(s.bedrock_knowledge_base_id),
         "guardrail_configured": bool(s.bedrock_guardrail_id),

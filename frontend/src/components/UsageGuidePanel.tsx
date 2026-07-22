@@ -170,7 +170,7 @@ const archDiagram = `Browser (Enterprise User)
     ▼
 Next.js :PORT (Railway) / :3010 (local)
     ├─ /chat /lab /documents /image /embedding
-    ├─ /guardrails /prompts /evaluation /agents /ops
+    ├─ /guardrails /prompts /evaluation /agents /ops /tests
     └─ /api/* · /health ──proxy──► FastAPI :8180
               ├─ LLM: Bedrock  or  OpenAI (OPENAI_API_KEY)
               ├─ Image / Embed: Bedrock  or  mock SVG/vector
@@ -193,8 +193,8 @@ const guideSections: readonly GuideSection[] = [
         body: "本パネルは全画面で表示されます。PC ではヘッダーをドラッグして位置を変更でき、▼▲ で折りたたみ可能です。",
         items: [
           "PC — ヘッダーをドラッグで移動 · ▼▲ で開閉 · 位置はブラウザに自動保存",
-          "ナビ — Text/RAG · AI Lab · Documents · Image · Embedding · Guardrails · Prompts · Evaluation · Agents · Ops",
-          "推奨フロー — ホーム → /chat → /image → /lab → /ops → Guardrails / Prompts",
+          "ナビ — Text/RAG · AI Lab · Documents · Image · … · Ops · Tests",
+          "推奨フロー — ホーム → /chat → /image → /lab → /ops → /tests",
           "プレゼン時 — パネルを画面端に寄せ、メイン画面を広く使う",
         ],
       },
@@ -253,6 +253,7 @@ const guideSections: readonly GuideSection[] = [
           "/lab — テキスト/画像/RAG/表形式分析 · 実験ログ",
           "/documents — 文書アップロード · ローカル索引 · KB ingest",
           "/ops — テレメトリ · フィードバック · モデルレジストリ昇格 · 品質アラート",
+          "/tests — pytest + Vitest を実行し結果を Web で確認（POST /api/tests/run）",
         ],
       },
       {

@@ -12,6 +12,8 @@ node_modules/
 .next/
 out/
 *.tsbuildinfo
+frontend/.test-results.json
+frontend/coverage/
 
 # Env / secrets
 .env

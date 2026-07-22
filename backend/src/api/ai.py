@@ -561,6 +561,45 @@ def ops_summary():
     }
 
 
+class TestRunRequest(BaseModel):
+    suites: list[str] = Field(default_factory=lambda: ["python", "frontend"])
+
+
+@router.post("/tests/run")
+def tests_run(body: TestRunRequest):
+    """Execute pytest + vitest and persist results for the Web Tests page."""
+    from src.services.test_runner import run_tests
+
+    return run_tests(body.suites)
+
+
+@router.get("/tests/latest")
+def tests_latest():
+    from src.services.test_runner import latest_run
+
+    run = latest_run()
+    if not run:
+        return {"run": None}
+    return {"run": run}
+
+
+@router.get("/tests/history")
+def tests_history(limit: int = 20):
+    from src.services.test_runner import list_runs
+
+    return {"items": list_runs(limit=min(max(limit, 1), 50))}
+
+
+@router.get("/tests/runs/{run_id}")
+def tests_get_run(run_id: str):
+    from src.services.test_runner import get_run
+
+    run = get_run(run_id)
+    if not run:
+        raise HTTPException(404, "test run not found")
+    return run
+
+
 class AnalysisTextRequest(BaseModel):
     prompt: str
     project_id: Optional[str] = None

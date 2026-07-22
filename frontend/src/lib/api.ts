@@ -228,4 +228,13 @@ export const api = {
         body: JSON.stringify({ message, session_id }),
       },
     ),
+  runTests: (suites: string[] = ["python", "frontend"]) =>
+    json<Record<string, unknown>>("/api/tests/run", {
+      method: "POST",
+      body: JSON.stringify({ suites }),
+    }),
+  testsLatest: () => json<{ run: Record<string, unknown> | null }>("/api/tests/latest"),
+  testsHistory: (limit = 20) =>
+    json<{ items: Array<Record<string, unknown>> }>(`/api/tests/history?limit=${limit}`),
+  testsRun: (runId: string) => json<Record<string, unknown>>(`/api/tests/runs/${runId}`),
 };
