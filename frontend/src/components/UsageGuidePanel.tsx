@@ -41,7 +41,7 @@ const architectureFeatured: FeaturedBlock = {
   variant: "architecture",
   items: [
     "Next.js — Text/RAG · Image · Embedding · Guardrails · Prompts · Evaluation · Agents",
-    "FastAPI :8180 — Bedrock 呼び出し · RAG · DynamoDB プロンプト管理",
+    "FastAPI :8290 — Bedrock 呼び出し · RAG · DynamoDB プロンプト管理",
     "PostgreSQL — セッション・監査ログ用（任意）",
     "DynamoDB — Prompt / Eval / Session（未接続時はメモリフォールバック）",
     "S3 → Knowledge Base → Bedrock — 文書 RAG",
@@ -172,7 +172,7 @@ Next.js :PORT (Railway / :3010 local)
     ├─ /prompts       Prompt Management
     ├─ /evaluation    Model Evaluation
     ├─ /agents        Bedrock Agents
-    └─ /api/* ──proxy──► FastAPI :8180
+    └─ /api/* ──proxy──► FastAPI :8290
               ├─ Bedrock Runtime (Text / Image / Embed)
               ├─ Knowledge Bases (RAG ← S3)
               ├─ Guardrails · Agents
@@ -203,7 +203,7 @@ const guideSections: readonly GuideSection[] = [
         body: "本番・ローカル共通。障害切り分けとデモ前チェックの起点です。",
         items: [
           "ローカル UI — http://localhost:3010",
-          "ローカル API — http://localhost:8180/docs",
+          "ローカル API — http://localhost:8290/docs",
           "/health — app: bedrock-knowledge-base · mock_mode を確認",
           "MOCK MODE — AWS 無しで 6 機能を体験可能",
         ],
@@ -213,7 +213,7 @@ const guideSections: readonly GuideSection[] = [
         body: "ローカル開発の最短手順です。",
         items: [
           "① setup.bat — Postgres · DynamoDB Local · 依存関係",
-          "② backend — python run.py（:8180）",
+          "② backend — python run.py（:8290）",
           "③ frontend — npm run dev（:3010）",
           "④ /chat で「有給休暇の申請手順」など RAG を試す",
           "⑤ /guardrails · /prompts · /agents を順に確認",
@@ -274,7 +274,7 @@ const guideSections: readonly GuideSection[] = [
         body: "画面や API が期待どおり動かないときの確認手順です。",
         items: [
           "空白ページ :3000 — 他アプリ占有。本プロジェクトは :3010",
-          "API 404 — Fintech 等が同ポートの場合あり。:8180 を確認",
+          "API 404 — 古いプロセスがポートを掴む場合あり。:8290 を確認",
           "RAG が薄い — samples/*.md の有無 · KB ID 設定を確認",
           "DynamoDB エラー — ローカルは DYNAMODB_ENDPOINT · 本番は空でメモリ可",
           "Railway Railpack 失敗 — Dockerfile / start.sh がルートにあるか確認",

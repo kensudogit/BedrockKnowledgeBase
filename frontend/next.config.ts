@@ -2,7 +2,7 @@ import type { NextConfig } from "next";
 import path from "path";
 
 const internalApi =
-  process.env.INTERNAL_API_URL || "http://127.0.0.1:8180";
+  process.env.INTERNAL_API_URL || "http://127.0.0.1:8290";
 
 const nextConfig: NextConfig = {
   outputFileTracingRoot: path.join(__dirname),

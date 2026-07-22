@@ -27,16 +27,38 @@ def mock_text(prompt: str, system: str | None = None) -> dict[str, Any]:
 
 
 def mock_image(prompt: str) -> dict[str, Any]:
-    # 1x1 PNG
-    png = base64.b64decode(
-        "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+    """Visible SVG placeholder (1x1 PNG looked like a failure in the UI)."""
+    safe = (
+        prompt.replace("&", "&amp;")
+        .replace("<", "&lt;")
+        .replace(">", "&gt;")
+        .replace('"', "&quot;")
     )
+    line1 = safe[:42]
+    line2 = safe[42:84]
+    svg = f"""<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0f2744"/>
+      <stop offset="100%" stop-color="#0284c7"/>
+    </linearGradient>
+  </defs>
+  <rect width="512" height="512" fill="url(#g)"/>
+  <rect x="28" y="28" width="456" height="456" rx="24" fill="none" stroke="#7dd3fc" stroke-width="2" opacity="0.55"/>
+  <text x="256" y="170" text-anchor="middle" fill="#e0f2fe" font-size="34" font-family="Segoe UI, sans-serif" font-weight="700">MOCK IMAGE</text>
+  <text x="256" y="220" text-anchor="middle" fill="#bae6fd" font-size="16" font-family="Segoe UI, sans-serif">Bedrock 未接続 — プレースホルダ</text>
+  <text x="256" y="290" text-anchor="middle" fill="#ffffff" font-size="18" font-family="Segoe UI, sans-serif">{line1}</text>
+  <text x="256" y="322" text-anchor="middle" fill="#ffffff" font-size="18" font-family="Segoe UI, sans-serif">{line2}</text>
+  <text x="256" y="400" text-anchor="middle" fill="#93c5fd" font-size="14" font-family="Segoe UI, sans-serif">USE_BEDROCK_MOCK=false で Titan Image へ</text>
+</svg>"""
+    b64 = base64.b64encode(svg.encode("utf-8")).decode("ascii")
     return {
-        "image_base64": base64.b64encode(png).decode("ascii"),
-        "content_type": "image/png",
+        "image_base64": b64,
+        "content_type": "image/svg+xml",
         "prompt": prompt,
         "model": "mock-image",
         "mock": True,
+        "data_url": f"data:image/svg+xml;base64,{b64}",
     }
 
 

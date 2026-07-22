@@ -43,5 +43,5 @@ def generate_image(prompt: str, *, width: int = 512, height: int = 512) -> dict[
     }
 
 
-def decode_preview_data_url(image_base64: str) -> str:
-    return f"data:image/png;base64,{image_base64}"
+def decode_preview_data_url(image_base64: str, content_type: str = "image/png") -> str:
+    return f"data:{content_type};base64,{image_base64}"

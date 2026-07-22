@@ -170,7 +170,11 @@ def text_generate(body: TextRequest):
 @router.post("/image/generate")
 def image_generate(body: ImageRequest):
     out = generate_image(body.prompt, width=body.width, height=body.height)
-    out["data_url"] = decode_preview_data_url(out["image_base64"])
+    if not out.get("data_url"):
+        out["data_url"] = decode_preview_data_url(
+            out["image_base64"],
+            out.get("content_type") or "image/png",
+        )
     return out
 
 
