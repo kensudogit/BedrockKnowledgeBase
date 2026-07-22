@@ -35,17 +35,17 @@ type FeaturedBlock = {
 
 const architectureFeatured: FeaturedBlock = {
   badge: "Architecture",
-  title: "Next.js BFF + FastAPI + Amazon Bedrock",
+  title: "Next.js BFF + FastAPI + Bedrock / OpenAI",
   body:
-    "Web は同一オリジンで FastAPI にプロキシ。ローカルはモック、本番は Bedrock Runtime / Knowledge Bases / Agents / Guardrails に切替。API キーはサーバー側のみ。",
+    "Web は同一オリジンで FastAPI にプロキシ。テキストは Bedrock → OpenAI → モックの順で選択。画像・埋め込み等は Bedrock（未設定時はモック）。秘密情報はサーバー側 Variables のみ。",
   variant: "architecture",
   items: [
-    "Next.js — Text/RAG · Image · Embedding · Guardrails · Prompts · Evaluation · Agents",
-    "FastAPI :8180（Railway 内部）/ ローカルは :8290 可 — Bedrock · RAG · DynamoDB",
-    "PostgreSQL — セッション・監査ログ用（任意）",
-    "DynamoDB — Prompt / Eval / Session（未接続時はメモリフォールバック）",
-    "S3 → Knowledge Base → Bedrock — 文書 RAG",
-    "/health — 生存確認 · /docs — Swagger",
+    "Next.js — Chat · Lab · Documents · Image · Embedding · Guardrails · Prompts · Evaluation · Agents · Ops",
+    "FastAPI :8180（Railway 内部・INTERNAL_API_URL）/ ローカル競合時は :8290",
+    "PostgreSQL — Railway DATABASE_URL（スキーマ自動初期化）",
+    "DynamoDB — Prompt / Eval（未接続時はメモリフォールバック）",
+    "LLM — Bedrock Runtime または OPENAI_API_KEY（gpt-4o-mini 等）",
+    "/health — llm_provider · database_ok · openai_configured · jwt_configured",
   ],
 };
 
@@ -53,13 +53,13 @@ const ragFeatured: FeaturedBlock = {
   badge: "Text / RAG",
   title: "テキスト生成と社内文書検索（/chat）",
   body:
-    "Claude 系テキスト生成と Knowledge Bases による RAG を同一画面で試せます。モック時は samples/ 文書をローカル検索します。",
+    "チャット・RAG を同一画面で試せます。回答生成は llm_provider（bedrock / openai / mock）に従います。モック RAG は samples/ をローカル検索します。",
   variant: "rag",
   items: [
-    "Text Generation — POST /api/text/generate（system / guardrail 任意）",
-    "RAG — POST /api/rag/query（use_case で FAQ / 契約書 / 医療 等を切替）",
-    "利用例 — 社内チャット · FAQ · 文書検索 · 契約書レビュー · コード生成",
-    "本番 — BEDROCK_KNOWLEDGE_BASE_ID + S3 文書同期",
+    "POST /api/chat · /api/text/generate — マルチターン / 単発生成",
+    "RAG — POST /api/rag/query（use_case で FAQ / 契約書 / 医療 等）",
+    "OpenAI — USE_BEDROCK_MOCK=true でも OPENAI_API_KEY があれば実テキスト応答",
+    "Bedrock — USE_BEDROCK_MOCK=false + AWS 認証 + 任意で Knowledge Base",
   ],
 };
 
@@ -70,10 +70,10 @@ const imageFeatured: FeaturedBlock = {
     "Titan Image 等でプロンプトから画像を生成。「生成」後に MOCK IMAGE プレースホルダまたは実画像が表示されます。",
   variant: "image",
   items: [
-    "操作 — プロンプト入力 →「生成」→「生成完了（モック）」と青いプレースホルダを確認",
+    "操作 — プロンプト →「生成」→「生成完了（モック）」と青い 512×512 プレースホルダ",
     "POST /api/image/generate — prompt → data_url（モックは SVG）",
-    "用途 — 資料・UI モック・マニュアル挿絵の試作",
-    "実画像 — USE_BEDROCK_MOCK=false + AWS 認証 + BEDROCK_IMAGE_MODEL_ID（Titan）",
+    "注意 — 旧 1×1 PNG は「動かない」ように見える。最新デプロイを Ctrl+F5",
+    "実画像 — USE_BEDROCK_MOCK=false + AWS 認証 + Titan Image",
   ],
 };
 
@@ -85,7 +85,7 @@ const embedFeatured: FeaturedBlock = {
   items: [
     "POST /api/embedding — texts[] → embeddings[][]",
     "用途 — セマンティック検索 · 重複検知 · RAG 前処理",
-    "本番 — Titan Embed Text v2",
+    "本番 — Titan Embed Text v2 / モック時はローカル n-gram ベクトル",
   ],
 };
 
@@ -122,6 +122,7 @@ const evalFeatured: FeaturedBlock = {
     "POST /api/evaluation/run — 評価ジョブ実行",
     "GET /api/evaluation — 履歴一覧",
     "観点 — 正確性 · 根拠引用 · ガードレール通過",
+    "関連 — /lab（実験）· /ops（モニタリング・モデル昇格）",
   ],
 };
 
@@ -139,15 +140,15 @@ const agentFeatured: FeaturedBlock = {
 
 const deployFeatured: FeaturedBlock = {
   badge: "Deploy",
-  title: "Railway · Terraform · ローカル",
+  title: "Railway · Variables · ローカル",
   body:
-    "単一コンテナ（Next + uvicorn）で Railway 公開。AWS 基盤は Terraform で S3 / Lambda / API GW / DynamoDB を定義。",
+    "単一コンテナ（Next + uvicorn）で Railway 公開。必須 Variables を揃えて Deploy。AWS 基盤は Terraform で拡張可能。",
   variant: "deploy",
   items: [
-    "Railway — Dockerfile + railway.toml + start.sh",
-    "Variables — DATABASE_URL · OPENAI_API_KEY · JWT_SECRET · INTERNAL_API_URL=:8180",
-    "IaC — terraform/ で AI 基盤をコード化",
-    "Java — java-spring/ で Runtime API 組込みスタブ",
+    "必須 — DATABASE_URL · OPENAI_API_KEY · JWT_SECRET · INTERNAL_API_URL=http://127.0.0.1:8180",
+    "推奨 — APP_ENV=production · CORS_ORIGINS=* · DYNAMODB_ENDPOINT=（空）· USE_BEDROCK_MOCK=true",
+    "禁止 — Suggested の localhost:3010 / :8290 / DynamoDB Local を本番に足さない",
+    "確認 — /health の database_ok · openai_configured · llm_provider · jwt_configured",
   ],
 };
 
@@ -156,6 +157,7 @@ const techStack = [
   "Next.js 15 · React",
   "PostgreSQL · DynamoDB",
   "Amazon Bedrock",
+  "OpenAI API",
   "Knowledge Bases",
   "Guardrails · Agents",
   "S3 · Lambda · API GW",
@@ -166,20 +168,16 @@ const techStack = [
 const archDiagram = `Browser (Enterprise User)
     │ HTTPS
     ▼
-Next.js :PORT (Railway / :3010 local)
-    ├─ /chat          Text · RAG
-    ├─ /image         Image Generation
-    ├─ /embedding     Embedding
-    ├─ /guardrails    Guardrails
-    ├─ /prompts       Prompt Management
-    ├─ /evaluation    Model Evaluation
-    ├─ /agents        Bedrock Agents
-    └─ /api/* ──proxy──► FastAPI :8180（INTERNAL_API_URL）
-              ├─ Bedrock Runtime (Text / Image / Embed)
-              ├─ Knowledge Bases (RAG ← S3)
-              ├─ Guardrails · Agents
-              ├─ DynamoDB (prompts · evals)
-              └─ PostgreSQL (optional)`;
+Next.js :PORT (Railway) / :3010 (local)
+    ├─ /chat /lab /documents /image /embedding
+    ├─ /guardrails /prompts /evaluation /agents /ops
+    └─ /api/* · /health ──proxy──► FastAPI :8180
+              ├─ LLM: Bedrock  or  OpenAI (OPENAI_API_KEY)
+              ├─ Image / Embed: Bedrock  or  mock SVG/vector
+              ├─ RAG: Knowledge Bases ← S3  or  samples/
+              ├─ Auth: JWT_SECRET · X-API-Key
+              ├─ PostgreSQL ← DATABASE_URL
+              └─ DynamoDB or memory (prompts · evals)`;
 
 type GuideSection = {
   label: string;
@@ -195,8 +193,8 @@ const guideSections: readonly GuideSection[] = [
         body: "本パネルは全画面で表示されます。PC ではヘッダーをドラッグして位置を変更でき、▼▲ で折りたたみ可能です。",
         items: [
           "PC — ヘッダーをドラッグで移動 · ▼▲ で開閉 · 位置はブラウザに自動保存",
-          "ナビ — Text/RAG · Image · Embedding · Guardrails · Prompts · Evaluation · Agents",
-          "推奨フロー — ホーム → Text/RAG → Guardrails → Prompts → Agents",
+          "ナビ — Text/RAG · AI Lab · Documents · Image · Embedding · Guardrails · Prompts · Evaluation · Agents · Ops",
+          "推奨フロー — ホーム → /chat → /image → /lab → /ops → Guardrails / Prompts",
           "プレゼン時 — パネルを画面端に寄せ、メイン画面を広く使う",
         ],
       },
@@ -204,58 +202,77 @@ const guideSections: readonly GuideSection[] = [
         title: "接続確認（最初に）",
         body: "本番・ローカル共通。障害切り分けとデモ前チェックの起点です。",
         items: [
+          "本番 — https://<your-app>.up.railway.app/health",
           "ローカル UI — http://localhost:3010",
-          "ローカル API — http://localhost:8180/docs（占有時は :8290）",
-          "/health — app: bedrock-knowledge-base · mock_mode · version を確認",
-          "MOCK MODE — AWS 無しで 6 機能を体験可能（画像はプレースホルダ）",
+          "ローカル API — http://localhost:8180/docs（占有時は :8290 + INTERNAL_API_URL 合わせ）",
+          "/health — version · llm_provider · database_ok · openai_configured · jwt_configured",
           "/image —「生成」→ MOCK IMAGE が出ればフロント〜API 連携 OK",
+          "/chat — OPENAI_API_KEY 設定時は実 LLM、未設定時はモック応答",
         ],
       },
       {
-        title: "初回セットアップ（5 分）",
+        title: "初回セットアップ（ローカル 5 分）",
         body: "ローカル開発の最短手順です。",
         items: [
           "① setup.bat — Postgres · DynamoDB Local · 依存関係",
           "② backend — python run.py（既定 :8180 / 競合時 PORT=8290）",
           "③ frontend — INTERNAL_API_URL を API ポートに合わせて npm run dev（:3010）",
-          "④ /chat で「有給休暇の申請手順」など RAG を試す",
-          "⑤ /image で「生成」→ MOCK IMAGE プレースホルダを確認",
-          "⑥ /guardrails · /prompts · /agents を順に確認",
+          "④ /chat で RAG、「有給休暇の申請手順」などを試す",
+          "⑤ /image で「生成」→ MOCK IMAGE を確認",
+          "⑥ /lab · /ops · /documents を確認",
         ],
       },
     ],
   },
   {
-    label: "6コア機能 詳細",
+    label: "画面・機能 詳細",
     steps: [
       {
-        title: "① Text Generation / RAG",
-        body: "/chat でプロンプト送信または文書質問を実行します。",
+        title: "① Text / RAG（/chat）",
+        body: "プロンプト送信・文書質問・セッション付きチャット。",
         items: [
-          "通常生成 — システムプロンプト付きテキスト生成",
-          "RAG — samples/ または Knowledge Base から根拠付き回答",
+          "llm_provider=openai — OPENAI_API_KEY で Chat Completions",
+          "llm_provider=bedrock — USE_BEDROCK_MOCK=false + AWS 認証",
+          "llm_provider=mock — ローカル定型応答 + samples/ RAG",
           "ユースケース — 社内 FAQ · 契約書 · 医療文書 · 金融アドバイス",
         ],
       },
       {
-        title: "② Image Generation（/image）",
-        body: "プロンプトから画像を生成します。モックと本番で見え方が異なります。",
+        title: "② Image（/image）",
+        body: "プロンプトから画像を生成します。",
         items: [
-          "手順 — プロンプト入力 →「生成」→ ステータス「生成完了（モック）」を確認",
-          "成功時 — 青い MOCK IMAGE プレースホルダ（512×512）が表示される",
-          "注意 — 旧モックは 1×1 透明 PNG のため「ボタンが動かない」ように見える",
-          "実画像 — Railway Variables で USE_BEDROCK_MOCK=false と AWS 認証を設定",
-          "確認 — /health の mock_mode · デプロイ後は Ctrl+F5 でハードリロード",
+          "モック成功 — 青い MOCK IMAGE（512×512）と「生成完了（モック）」",
+          "実画像 — Bedrock Titan（モック解除 + AWS）",
+          "旧バグ — 1×1 透明 PNG は不可視。最新ビルドへ更新",
         ],
       },
       {
-        title: "③〜⑥ Embed / Guard / Prompt / Eval",
+        title: "③ AI Lab / Documents / Ops",
+        body: "分析・文書・運用の追加画面です。",
+        items: [
+          "/lab — テキスト/画像/RAG/表形式分析 · 実験ログ",
+          "/documents — 文書アップロード · ローカル索引 · KB ingest",
+          "/ops — テレメトリ · フィードバック · モデルレジストリ昇格 · 品質アラート",
+        ],
+      },
+      {
+        title: "④ Embed / Guard / Prompt / Eval / Agents",
         body: "各専用画面から API を直接操作できます。",
         items: [
-          "/embedding — 複数テキストのベクトル次元を確認",
-          "/guardrails — 入力テキストのブロック/マスク結果",
+          "/embedding — ベクトル次元確認",
+          "/guardrails — ブロック/マスク結果",
           "/prompts — テンプレート一覧 · 変数描画",
           "/evaluation — 評価実行とスコア履歴",
+          "/agents — プラン付きエージェント応答",
+        ],
+      },
+      {
+        title: "⑤ Auth（JWT）",
+        body: "Railway JWT_SECRET で Bearer トークンを発行できます。",
+        items: [
+          "POST /api/auth/token — { subject, expires_in_sec } → access_token",
+          "GET /api/auth/me — Authorization: Bearer <token>",
+          "任意 — REQUIRE_API_KEY=true で X-API-Key または JWT を要求",
         ],
       },
     ],
@@ -264,43 +281,58 @@ const guideSections: readonly GuideSection[] = [
     label: "AWS · Railway 運用",
     steps: [
       {
-        title: "モック → 本番 Bedrock",
-        body: ".env / Railway Variables で切替します。",
+        title: "Railway Variables（必須セット）",
+        body: "ダッシュボードで設定し Apply → Deploy します。",
         items: [
-          "USE_BEDROCK_MOCK=false（画像・テキスト・RAG が実 Bedrock 呼び出しになる）",
+          "DATABASE_URL — Postgres サービスを Reference（postgres:// は自動正規化）",
+          "OPENAI_API_KEY — テキスト/チャット実応答（Bedrock モック時の本番向け）",
+          "JWT_SECRET — /api/auth/token 署名鍵",
+          "INTERNAL_API_URL=http://127.0.0.1:8180 — コンテナ内 API（:8290 禁止）",
+          "APP_ENV=production · CORS_ORIGINS=* · DYNAMODB_ENDPOINT=（空）",
+          "USE_BEDROCK_MOCK=true — OpenAI テキスト + 画像モックの推奨構成",
+        ],
+      },
+      {
+        title: "LLM 切替（OpenAI ↔ Bedrock）",
+        body: "/health の llm_provider で現在の経路を確認します。",
+        items: [
+          "openai — USE_BEDROCK_MOCK=true + OPENAI_API_KEY（推奨の Railway 構成）",
+          "bedrock — USE_BEDROCK_MOCK=false + AWS_ACCESS_KEY_ID / SECRET + REGION",
+          "mock — どちらも未設定（ローカル体験用）",
+          "画像・埋め込みの実呼び出しは Bedrock 側の設定が必要",
+        ],
+      },
+      {
+        title: "モック → 本番 Bedrock（画像・KB・Agents）",
+        body: "OpenAI だけでは足りない機能を Bedrock に切り替えます。",
+        items: [
+          "USE_BEDROCK_MOCK=false",
           "AWS_ACCESS_KEY_ID · AWS_SECRET_ACCESS_KEY · AWS_REGION",
-          "BEDROCK_IMAGE_MODEL_ID — Titan Image（未設定時はデフォルト）",
-          "BEDROCK_KNOWLEDGE_BASE_ID · BEDROCK_GUARDRAIL_ID",
+          "BEDROCK_IMAGE_MODEL_ID · BEDROCK_KNOWLEDGE_BASE_ID · BEDROCK_GUARDRAIL_ID",
           "BEDROCK_AGENT_ID · BEDROCK_AGENT_ALIAS_ID · S3_DOCUMENTS_BUCKET",
         ],
       },
       {
-        title: "Railway デプロイ",
+        title: "デプロイ手順",
         body: "ルート Dockerfile で Next + FastAPI を一体公開します。",
         items: [
-          "railway.toml — builder = DOCKERFILE",
-          "scripts/set-railway-vars.ps1 — モック用変数を一括設定",
-          "INTERNAL_API_URL=http://127.0.0.1:8180（必須・コンテナ内 API）",
-          "DATABASE_URL — Postgres サービスを Reference",
-          "OPENAI_API_KEY — テキスト/チャット実応答（Bedrock モック時）",
-          "JWT_SECRET — POST /api/auth/token で Bearer 発行",
-          "CORS_ORIGINS=* · DYNAMODB_ENDPOINT=（空）· APP_ENV=production",
-          "公開 URL の /health — database_ok · openai_configured · llm_provider を確認",
-          "反映 — Variables Apply → Deploy → Ctrl+F5",
+          "railway.toml — builder = DOCKERFILE · start.sh で API 起動待ち後に Next",
+          "scripts/set-railway-vars.ps1 — 共通変数の一括設定",
+          "Git push → Railway 自動ビルド → Variables Apply → Deploy",
+          "公開 URL /health と /image「生成」でスモークテスト → 必要なら Ctrl+F5",
         ],
       },
       {
         title: "よくあるエラーと対処",
         body: "画面や API が期待どおり動かないときの確認手順です。",
         items: [
-          "空白ページ :3000 — 他アプリ占有。本プロジェクトは :3010",
-          "Railway ECONNREFUSED :8290 — INTERNAL_API_URL がローカル用。8180 に直して再デプロイ",
-          "API 404 / 古い機能 — ローカルは古い run.py のポート占有を確認（:8180/:8290）",
-          "Image「生成」無反応に見える — 1×1 モックの可能性。最新デプロイで MOCK IMAGE が出るか確認",
-          "Image が常にモック — /health の mock_mode=true。USE_BEDROCK_MOCK=false と AWS 認証を設定",
-          "RAG が薄い — samples/*.md の有無 · KB ID 設定を確認",
-          "DynamoDB エラー — ローカルは DYNAMODB_ENDPOINT · 本番は空でメモリ可",
-          "Railway Railpack 失敗 — Dockerfile / start.sh がルートにあるか確認",
+          "Railway ECONNREFUSED :8290 — INTERNAL_API_URL を :8180 にして再デプロイ",
+          "Suggested Variables の localhost を本番に追加しない",
+          "database_ok=false — Postgres の DATABASE_URL Reference と Deploy を確認",
+          "llm_provider=mock のまま — OPENAI_API_KEY または Bedrock 認証を設定",
+          "Image 無反応に見える — 旧 1×1 モック。最新デプロイ + Ctrl+F5",
+          "ローカル API 404 — 古い run.py が :8180 を占有していないか確認",
+          "DynamoDB エラー — 本番は DYNAMODB_ENDPOINT 空（メモリ可）",
         ],
       },
     ],
@@ -315,7 +347,7 @@ const L = {
   collapse: "閉じる",
   heroTitle: "Bedrock Knowledge Base 基盤",
   heroLead:
-    "Amazon Bedrock を中核に Text / Image / Embedding / Guardrails / Prompt / Evaluation と RAG・Agents を一体提供。社内チャットから文書検索・業務自動化まで。",
+    "Bedrock / OpenAI を中核に Text·RAG·Image·Lab·Ops を一体提供。Railway Variables（DATABASE_URL · OPENAI_API_KEY · JWT_SECRET）で本番稼働し、必要に応じて Knowledge Bases / Agents へ拡張。",
   stackLabel: "Tech stack",
   diagramLabel: "Service topology",
   workflowLabel: "詳細利用手順",
