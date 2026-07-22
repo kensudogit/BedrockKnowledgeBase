@@ -11,6 +11,8 @@ railway variables set "APP_ENV=production"
 railway variables set "ENABLE_GUARDRAILS=true"
 railway variables set "ENABLE_AGENTS=true"
 railway variables set "AWS_REGION=ap-northeast-1"
+# Next.js rewrite target inside the container (must match start.sh uvicorn)
+railway variables set "INTERNAL_API_URL=http://127.0.0.1:8180"
 
 Write-Host ""
 Write-Host "Done. Optional next steps:"

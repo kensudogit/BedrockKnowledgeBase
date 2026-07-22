@@ -41,7 +41,7 @@ const architectureFeatured: FeaturedBlock = {
   variant: "architecture",
   items: [
     "Next.js — Text/RAG · Image · Embedding · Guardrails · Prompts · Evaluation · Agents",
-    "FastAPI :8290 — Bedrock 呼び出し · RAG · DynamoDB プロンプト管理",
+    "FastAPI :8180（Railway 内部）/ ローカルは :8290 可 — Bedrock · RAG · DynamoDB",
     "PostgreSQL — セッション・監査ログ用（任意）",
     "DynamoDB — Prompt / Eval / Session（未接続時はメモリフォールバック）",
     "S3 → Knowledge Base → Bedrock — 文書 RAG",
@@ -174,7 +174,7 @@ Next.js :PORT (Railway / :3010 local)
     ├─ /prompts       Prompt Management
     ├─ /evaluation    Model Evaluation
     ├─ /agents        Bedrock Agents
-    └─ /api/* ──proxy──► FastAPI :8290
+    └─ /api/* ──proxy──► FastAPI :8180（INTERNAL_API_URL）
               ├─ Bedrock Runtime (Text / Image / Embed)
               ├─ Knowledge Bases (RAG ← S3)
               ├─ Guardrails · Agents
@@ -205,7 +205,7 @@ const guideSections: readonly GuideSection[] = [
         body: "本番・ローカル共通。障害切り分けとデモ前チェックの起点です。",
         items: [
           "ローカル UI — http://localhost:3010",
-          "ローカル API — http://localhost:8290/docs",
+          "ローカル API — http://localhost:8180/docs（占有時は :8290）",
           "/health — app: bedrock-knowledge-base · mock_mode · version を確認",
           "MOCK MODE — AWS 無しで 6 機能を体験可能（画像はプレースホルダ）",
           "/image —「生成」→ MOCK IMAGE が出ればフロント〜API 連携 OK",
@@ -216,8 +216,8 @@ const guideSections: readonly GuideSection[] = [
         body: "ローカル開発の最短手順です。",
         items: [
           "① setup.bat — Postgres · DynamoDB Local · 依存関係",
-          "② backend — python run.py（:8290）",
-          "③ frontend — npm run dev（:3010）",
+          "② backend — python run.py（既定 :8180 / 競合時 PORT=8290）",
+          "③ frontend — INTERNAL_API_URL を API ポートに合わせて npm run dev（:3010）",
           "④ /chat で「有給休暇の申請手順」など RAG を試す",
           "⑤ /image で「生成」→ MOCK IMAGE プレースホルダを確認",
           "⑥ /guardrails · /prompts · /agents を順に確認",
@@ -280,9 +280,10 @@ const guideSections: readonly GuideSection[] = [
         items: [
           "railway.toml — builder = DOCKERFILE",
           "scripts/set-railway-vars.ps1 — モック用変数を一括設定",
+          "INTERNAL_API_URL=http://127.0.0.1:8180（必須・コンテナ内 API）",
           "CORS_ORIGINS=* · DYNAMODB_ENDPOINT=（空）",
           "公開 URL の /health で稼働確認（version · mock_mode）",
-          "Image 修正反映後 — Git push → Railway 再デプロイ → Ctrl+F5",
+          "反映 — Git push → Railway 再デプロイ → Ctrl+F5",
         ],
       },
       {
@@ -290,7 +291,8 @@ const guideSections: readonly GuideSection[] = [
         body: "画面や API が期待どおり動かないときの確認手順です。",
         items: [
           "空白ページ :3000 — 他アプリ占有。本プロジェクトは :3010",
-          "API 404 / 古い機能 — Fintech 等や古い run.py がポート占有。:8290 と /health を確認",
+          "Railway ECONNREFUSED :8290 — INTERNAL_API_URL がローカル用。8180 に直して再デプロイ",
+          "API 404 / 古い機能 — ローカルは古い run.py のポート占有を確認（:8180/:8290）",
           "Image「生成」無反応に見える — 1×1 モックの可能性。最新デプロイで MOCK IMAGE が出るか確認",
           "Image が常にモック — /health の mock_mode=true。USE_BEDROCK_MOCK=false と AWS 認証を設定",
           "RAG が薄い — samples/*.md の有無 · KB ID 設定を確認",

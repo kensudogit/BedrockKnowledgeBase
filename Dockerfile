@@ -7,6 +7,8 @@ RUN npm ci
 COPY frontend/ .
 ENV NEXT_PUBLIC_API_URL=
 ENV NODE_ENV=production
+# Bake rewrite target for next start (must match start.sh uvicorn port)
+ENV INTERNAL_API_URL=http://127.0.0.1:8180
 RUN npm run build
 
 FROM python:3.12-slim
