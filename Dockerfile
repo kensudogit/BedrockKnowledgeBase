@@ -30,7 +30,10 @@ COPY backend/datasets/ /app/datasets/
 COPY --from=frontend-builder /app/frontend /app/frontend
 
 # Ensure test suites are present for in-container /api/tests/run
-RUN test -d /app/tests && test -f /app/frontend/package.json
+RUN set -e; \
+    if [ ! -d /app/tests ]; then echo "MISSING /app/tests — check .dockerignore"; ls -la /app; exit 1; fi; \
+    if [ ! -f /app/frontend/package.json ]; then echo "MISSING /app/frontend/package.json"; ls -la /app; exit 1; fi; \
+    echo "OK tests=$(ls /app/tests | wc -l) frontend_pkg=yes"
 
 COPY start.sh /app/start.sh
 RUN sed -i 's/\r$//' /app/start.sh && chmod +x /app/start.sh
