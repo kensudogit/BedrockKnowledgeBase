@@ -66,12 +66,14 @@ const ragFeatured: FeaturedBlock = {
 const imageFeatured: FeaturedBlock = {
   badge: "Image",
   title: "画像生成（/image）",
-  body: "Titan Image 等でプロンプトから画像を生成。モック時はプレースホルダ SVG を返します。",
+  body:
+    "Titan Image 等でプロンプトから画像を生成。「生成」後に MOCK IMAGE プレースホルダまたは実画像が表示されます。",
   variant: "image",
   items: [
-    "POST /api/image/generate — prompt → data_url",
+    "操作 — プロンプト入力 →「生成」→「生成完了（モック）」と青いプレースホルダを確認",
+    "POST /api/image/generate — prompt → data_url（モックは SVG）",
     "用途 — 資料・UI モック・マニュアル挿絵の試作",
-    "本番 — BEDROCK_IMAGE_MODEL_ID（Titan Image Generator）",
+    "実画像 — USE_BEDROCK_MOCK=false + AWS 認証 + BEDROCK_IMAGE_MODEL_ID（Titan）",
   ],
 };
 
@@ -204,8 +206,9 @@ const guideSections: readonly GuideSection[] = [
         items: [
           "ローカル UI — http://localhost:3010",
           "ローカル API — http://localhost:8290/docs",
-          "/health — app: bedrock-knowledge-base · mock_mode を確認",
-          "MOCK MODE — AWS 無しで 6 機能を体験可能",
+          "/health — app: bedrock-knowledge-base · mock_mode · version を確認",
+          "MOCK MODE — AWS 無しで 6 機能を体験可能（画像はプレースホルダ）",
+          "/image —「生成」→ MOCK IMAGE が出ればフロント〜API 連携 OK",
         ],
       },
       {
@@ -216,7 +219,8 @@ const guideSections: readonly GuideSection[] = [
           "② backend — python run.py（:8290）",
           "③ frontend — npm run dev（:3010）",
           "④ /chat で「有給休暇の申請手順」など RAG を試す",
-          "⑤ /guardrails · /prompts · /agents を順に確認",
+          "⑤ /image で「生成」→ MOCK IMAGE プレースホルダを確認",
+          "⑥ /guardrails · /prompts · /agents を順に確認",
         ],
       },
     ],
@@ -234,10 +238,20 @@ const guideSections: readonly GuideSection[] = [
         ],
       },
       {
-        title: "②〜⑥ Image / Embed / Guard / Prompt / Eval",
+        title: "② Image Generation（/image）",
+        body: "プロンプトから画像を生成します。モックと本番で見え方が異なります。",
+        items: [
+          "手順 — プロンプト入力 →「生成」→ ステータス「生成完了（モック）」を確認",
+          "成功時 — 青い MOCK IMAGE プレースホルダ（512×512）が表示される",
+          "注意 — 旧モックは 1×1 透明 PNG のため「ボタンが動かない」ように見える",
+          "実画像 — Railway Variables で USE_BEDROCK_MOCK=false と AWS 認証を設定",
+          "確認 — /health の mock_mode · デプロイ後は Ctrl+F5 でハードリロード",
+        ],
+      },
+      {
+        title: "③〜⑥ Embed / Guard / Prompt / Eval",
         body: "各専用画面から API を直接操作できます。",
         items: [
-          "/image — プロンプトから画像 data URL",
           "/embedding — 複数テキストのベクトル次元を確認",
           "/guardrails — 入力テキストのブロック/マスク結果",
           "/prompts — テンプレート一覧 · 変数描画",
@@ -253,8 +267,9 @@ const guideSections: readonly GuideSection[] = [
         title: "モック → 本番 Bedrock",
         body: ".env / Railway Variables で切替します。",
         items: [
-          "USE_BEDROCK_MOCK=false",
+          "USE_BEDROCK_MOCK=false（画像・テキスト・RAG が実 Bedrock 呼び出しになる）",
           "AWS_ACCESS_KEY_ID · AWS_SECRET_ACCESS_KEY · AWS_REGION",
+          "BEDROCK_IMAGE_MODEL_ID — Titan Image（未設定時はデフォルト）",
           "BEDROCK_KNOWLEDGE_BASE_ID · BEDROCK_GUARDRAIL_ID",
           "BEDROCK_AGENT_ID · BEDROCK_AGENT_ALIAS_ID · S3_DOCUMENTS_BUCKET",
         ],
@@ -266,7 +281,8 @@ const guideSections: readonly GuideSection[] = [
           "railway.toml — builder = DOCKERFILE",
           "scripts/set-railway-vars.ps1 — モック用変数を一括設定",
           "CORS_ORIGINS=* · DYNAMODB_ENDPOINT=（空）",
-          "公開 URL の /health で稼働確認",
+          "公開 URL の /health で稼働確認（version · mock_mode）",
+          "Image 修正反映後 — Git push → Railway 再デプロイ → Ctrl+F5",
         ],
       },
       {
@@ -274,7 +290,9 @@ const guideSections: readonly GuideSection[] = [
         body: "画面や API が期待どおり動かないときの確認手順です。",
         items: [
           "空白ページ :3000 — 他アプリ占有。本プロジェクトは :3010",
-          "API 404 — 古いプロセスがポートを掴む場合あり。:8290 を確認",
+          "API 404 / 古い機能 — Fintech 等や古い run.py がポート占有。:8290 と /health を確認",
+          "Image「生成」無反応に見える — 1×1 モックの可能性。最新デプロイで MOCK IMAGE が出るか確認",
+          "Image が常にモック — /health の mock_mode=true。USE_BEDROCK_MOCK=false と AWS 認証を設定",
           "RAG が薄い — samples/*.md の有無 · KB ID 設定を確認",
           "DynamoDB エラー — ローカルは DYNAMODB_ENDPOINT · 本番は空でメモリ可",
           "Railway Railpack 失敗 — Dockerfile / start.sh がルートにあるか確認",
