@@ -1,3 +1,4 @@
+"""Bedrock ガードレールによる入出力テキストの安全フィルタ。"""
 from __future__ import annotations
 
 from typing import Any
@@ -7,6 +8,10 @@ from src.services.mock_ai import mock_guardrail
 
 
 def apply_guardrails(text: str, *, source: str = "OUTPUT") -> dict[str, Any]:
+    """
+    テキストに Bedrock ApplyGuardrail API を適用する。
+    モック時または ID 未設定時はモック結果を返す。
+    """
     settings = get_settings()
     if settings.mock_mode or not settings.bedrock_guardrail_id:
         return mock_guardrail(text)

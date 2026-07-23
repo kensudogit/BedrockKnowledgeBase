@@ -1,3 +1,4 @@
+"""Bedrock 画像生成モデルによる画像生成。"""
 from __future__ import annotations
 
 import base64
@@ -9,6 +10,7 @@ from src.services.mock_ai import mock_image
 
 
 def generate_image(prompt: str, *, width: int = 512, height: int = 512) -> dict[str, Any]:
+    """プロンプトから画像を生成し、Base64 エンコード結果を返す。"""
     settings = get_settings()
     if settings.mock_mode:
         return mock_image(prompt)
@@ -44,4 +46,5 @@ def generate_image(prompt: str, *, width: int = 512, height: int = 512) -> dict[
 
 
 def decode_preview_data_url(image_base64: str, content_type: str = "image/png") -> str:
+    """Base64 画像を data URL 形式に変換する（プレビュー表示用）。"""
     return f"data:{content_type};base64,{image_base64}"

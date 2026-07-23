@@ -1,3 +1,4 @@
+"""生成AI・RAG・評価・運用向け REST API ルーター（/api プレフィックス）。"""
 from __future__ import annotations
 
 from typing import Any, Optional
@@ -47,7 +48,11 @@ from src.services.telemetry import summarize as telemetry_summary
 router = APIRouter(prefix="/api", tags=["ai"])
 
 
+# --- リクエスト/レスポンスモデル ---
+
+
 class TextRequest(BaseModel):
+    """テキスト生成リクエスト。"""
     prompt: str
     system: Optional[str] = None
     max_tokens: int = 1024
@@ -56,21 +61,25 @@ class TextRequest(BaseModel):
 
 
 class ImageRequest(BaseModel):
+    """画像生成リクエスト。"""
     prompt: str
     width: int = 512
     height: int = 512
 
 
 class EmbedRequest(BaseModel):
+    """テキスト埋め込みリクエスト。"""
     texts: list[str] = Field(min_length=1)
 
 
 class GuardRequest(BaseModel):
+    """ガードレール適用リクエスト。"""
     text: str
     source: str = "OUTPUT"
 
 
 class PromptUpsert(BaseModel):
+    """プロンプト登録・更新リクエスト。"""
     prompt_id: Optional[str] = None
     name: str
     template: str
@@ -79,10 +88,12 @@ class PromptUpsert(BaseModel):
 
 
 class PromptRender(BaseModel):
+    """プロンプトテンプレート変数の置換値。"""
     values: dict[str, str]
 
 
 class RagRequest(BaseModel):
+    """RAG 検索・回答リクエスト。"""
     query: str
     use_case: str = "document_search"
     top_k: int = 5
@@ -91,6 +102,7 @@ class RagRequest(BaseModel):
 
 
 class ChatRequest(BaseModel):
+    """マルチターン チャット（RAG またはテキスト）リクエスト。"""
     message: str
     use_case: str = "document_search"
     mode: str = "rag"  # rag | text
@@ -100,22 +112,26 @@ class ChatRequest(BaseModel):
 
 
 class SessionCreate(BaseModel):
+    """会話セッション作成リクエスト。"""
     use_case: str = "document_search"
     title: Optional[str] = None
 
 
 class DocIngest(BaseModel):
+    """テキストドキュメント取り込みリクエスト。"""
     filename: str = "note.md"
     content: str
     content_type: str = "text/markdown"
 
 
 class AgentRequest(BaseModel):
+    """Bedrock エージェント呼び出しリクエスト。"""
     message: str
     session_id: Optional[str] = None
 
 
 class FeedbackRequest(BaseModel):
+    """回答へのフィードバック（評価・コメント）。"""
     rating: int  # 1 or -1
     session_id: Optional[str] = None
     message_index: Optional[int] = None
@@ -127,6 +143,7 @@ class FeedbackRequest(BaseModel):
 
 
 class ProjectCreate(BaseModel):
+    """プロジェクト（テナント）作成リクエスト。"""
     name: str
     client_name: str = ""
     env: str = "development"
@@ -135,6 +152,7 @@ class ProjectCreate(BaseModel):
 
 
 class DatasetCreate(BaseModel):
+    """評価用データセット作成リクエスト。"""
     name: str
     items: list[dict[str, Any]]
     dataset_id: Optional[str] = None
@@ -143,6 +161,7 @@ class DatasetCreate(BaseModel):
 
 
 class EvalRunRequest(BaseModel):
+    """モデル評価実行リクエスト。"""
     name: Optional[str] = None
     dataset_id: str = "golden_default"
     project_id: Optional[str] = None
@@ -150,6 +169,7 @@ class EvalRunRequest(BaseModel):
 
 
 class IngestKbRequest(BaseModel):
+    """ナレッジベースへのドキュメント取り込みリクエスト。"""
     filename: str
     content: str
     content_type: str = "text/markdown"
@@ -157,13 +177,17 @@ class IngestKbRequest(BaseModel):
 
 
 class TokenRequest(BaseModel):
+    """JWT アクセストークン発行リクエスト。"""
     subject: str = "bkb-user"
     expires_in_sec: int = 3600
 
 
+# --- 認証エンドポイント ---
+
+
 @router.post("/auth/token")
 def auth_token(body: TokenRequest):
-    """Issue Bearer JWT signed with Railway JWT_SECRET."""
+    """JWT_SECRET で署名した Bearer JWT を発行する。"""
     from src.config import get_settings
     from src.services.jwt_tokens import issue_access_token
 
@@ -177,7 +201,7 @@ def auth_token(body: TokenRequest):
 
 @router.get("/auth/me")
 def auth_me(authorization: Optional[str] = Header(default=None)):
-    """Validate Authorization: Bearer <jwt> signed with JWT_SECRET."""
+    """Authorization: Bearer JWT を検証し、クレームを返す。"""
     from src.config import get_settings
     from src.services.jwt_tokens import verify_access_token
 
@@ -191,8 +215,12 @@ def auth_me(authorization: Optional[str] = Header(default=None)):
     return {"ok": True, "claims": claims}
 
 
+# --- Bedrock 生成（テキスト/画像/埋め込み/ガードレール） ---
+
+
 @router.post("/text/generate")
 def text_generate(body: TextRequest):
+    """LLM によるテキスト生成。"""
     return generate_text(
         body.prompt,
         system=body.system,
@@ -204,6 +232,7 @@ def text_generate(body: TextRequest):
 
 @router.post("/image/generate")
 def image_generate(body: ImageRequest):
+    """画像生成モデルでプロンプトから画像を生成する。"""
     out = generate_image(body.prompt, width=body.width, height=body.height)
     if not out.get("data_url"):
         out["data_url"] = decode_preview_data_url(
@@ -215,16 +244,22 @@ def image_generate(body: ImageRequest):
 
 @router.post("/embedding")
 def embedding(body: EmbedRequest):
+    """複数テキストのベクトル埋め込みを返す。"""
     return embed_texts(body.texts)
 
 
 @router.post("/guardrails/apply")
 def guardrails(body: GuardRequest):
+    """入力/出力テキストにガードレールを適用する。"""
     return apply_guardrails(body.text, source=body.source)
+
+
+# --- プロンプト管理 ---
 
 
 @router.get("/prompts")
 def prompts_list():
+    """登録済みプロンプト一覧（空ならデフォルトをシード）。"""
     items = list_prompts()
     if not items:
         items = seed_default_prompts()
@@ -233,6 +268,7 @@ def prompts_list():
 
 @router.post("/prompts")
 def prompts_upsert(body: PromptUpsert):
+    """プロンプトを新規登録または更新する。"""
     return upsert_prompt(
         prompt_id=body.prompt_id,
         name=body.name,
@@ -244,6 +280,7 @@ def prompts_upsert(body: PromptUpsert):
 
 @router.post("/prompts/{prompt_id}/render")
 def prompts_render(prompt_id: str, body: PromptRender):
+    """テンプレート変数を置換してプロンプトをレンダリングする。"""
     try:
         return render_prompt(prompt_id, body.values)
     except KeyError:
@@ -252,14 +289,19 @@ def prompts_render(prompt_id: str, body: PromptRender):
 
 @router.get("/prompts/{prompt_id}")
 def prompts_get(prompt_id: str):
+    """指定 ID のプロンプトを取得する。"""
     p = get_prompt(prompt_id)
     if not p:
         raise HTTPException(404, "prompt not found")
     return p
 
 
+# --- モデル評価 ---
+
+
 @router.post("/evaluation/run")
 def evaluation_run(body: Optional[EvalRunRequest] = None, name: Optional[str] = None):
+    """データセットに対する RAG/モデル評価を実行する。"""
     req = body or EvalRunRequest(name=name)
     try:
         return run_model_evaluation(
@@ -274,19 +316,25 @@ def evaluation_run(body: Optional[EvalRunRequest] = None, name: Optional[str] = 
 
 @router.get("/evaluation")
 def evaluation_list():
+    """過去の評価実行結果一覧。"""
     return {"items": list_evaluations()}
 
 
 @router.get("/evaluation/compare")
 def evaluation_compare(a: str, b: str):
+    """2 件の評価結果を比較する。"""
     try:
         return compare_evaluations(a, b)
     except KeyError:
         raise HTTPException(404, "eval not found")
 
 
+# --- RAG / チャット / セッション ---
+
+
 @router.post("/rag/query")
 def rag_query(body: RagRequest):
+    """RAG で質問に回答し、任意でセッション履歴に追記する。"""
     hist = history_for_rag(body.session_id)
     out = rag_answer(
         body.query,
@@ -311,12 +359,13 @@ def rag_query(body: RagRequest):
 
 @router.post("/rag/retrieve")
 def rag_retrieve(body: RagRequest):
+    """ナレッジベースから関連チャンクのみ取得する（生成なし）。"""
     return retrieve_knowledge_base(body.query, top_k=body.top_k)
 
 
 @router.post("/chat")
 def chat(body: ChatRequest):
-    """Multi-turn chat: creates session if needed, keeps history for RAG context."""
+    """マルチターン チャット。必要ならセッション作成し RAG/テキストで回答。"""
     sid = body.session_id or create_session(use_case=body.use_case)["session_id"]
     append_message(sid, role="user", content=body.message, use_case=body.use_case)
 
@@ -334,7 +383,7 @@ def chat(body: ChatRequest):
         meta = {"mode": "text", "mock": gen.get("mock")}
     else:
         hist = history_for_rag(sid)
-        # exclude the user message we just appended from being duplicated in history
+        # 直前に追加したユーザーメッセージの重複を避ける
         hist_prior = hist[:-1] if hist and hist[-1].get("role") == "user" else hist
         out = rag_answer(
             body.message,
@@ -372,29 +421,37 @@ def chat(body: ChatRequest):
 
 @router.post("/sessions")
 def sessions_create(body: SessionCreate):
+    """新規会話セッションを作成する。"""
     return create_session(use_case=body.use_case, title=body.title)
 
 
 @router.get("/sessions")
 def sessions_list():
+    """セッション一覧。"""
     return {"items": list_sessions()}
 
 
 @router.get("/sessions/{session_id}")
 def sessions_get(session_id: str):
+    """指定セッションのメッセージ履歴を取得する。"""
     sess = get_session(session_id)
     if not sess:
         raise HTTPException(404, "session not found")
     return sess
 
 
+# --- ドキュメント / KB 取り込み ---
+
+
 @router.get("/documents")
 def documents_list():
+    """取り込み済みドキュメント一覧。"""
     return {"items": list_documents()}
 
 
 @router.post("/documents")
 def documents_create(body: DocIngest):
+    """テキスト内容をドキュメントストアに取り込む。"""
     if not body.content.strip():
         raise HTTPException(400, "content is empty")
     return ingest_text(
@@ -406,6 +463,7 @@ def documents_create(body: DocIngest):
 
 @router.post("/documents/kb-ingest")
 def documents_kb_ingest(body: IngestKbRequest):
+    """Bedrock ナレッジベースへの非同期取り込みジョブを開始する。"""
     if not body.content.strip():
         raise HTTPException(400, "content is empty")
     return ingest_to_knowledge_base(
@@ -418,16 +476,19 @@ def documents_kb_ingest(body: IngestKbRequest):
 
 @router.get("/documents/ingest-jobs")
 def documents_ingest_jobs():
+    """KB 取り込みジョブ一覧。"""
     return {"items": list_ingest_jobs()}
 
 
 @router.get("/documents/ingest-jobs/{ingestion_job_id}")
 def documents_ingest_status(ingestion_job_id: str):
+    """指定取り込みジョブの状態を返す。"""
     return get_ingestion_status(ingestion_job_id)
 
 
 @router.post("/documents/upload")
 async def documents_upload(file: UploadFile = File(...)):
+    """アップロードファイルを UTF-8/CP932 でデコードして取り込む。"""
     raw = await file.read()
     try:
         text = raw.decode("utf-8")
@@ -445,18 +506,24 @@ async def documents_upload(file: UploadFile = File(...)):
 
 @router.delete("/documents/{document_id}")
 def documents_delete(document_id: str):
+    """ドキュメントを削除する。"""
     if not delete_document(document_id):
         raise HTTPException(404, "document not found")
     return {"ok": True, "document_id": document_id}
 
 
+# --- エージェント / ユースケース / プロジェクト ---
+
+
 @router.post("/agents/invoke")
 def agents_invoke(body: AgentRequest):
+    """Bedrock エージェントにメッセージを送り応答を得る。"""
     return invoke_agent(body.message, session_id=body.session_id)
 
 
 @router.get("/use-cases")
 def use_cases():
+    """UI 向けユースケース定義一覧。"""
     return {
         "items": [
             {"id": "internal_chatbot", "label": "社内チャットボット"},
@@ -475,11 +542,13 @@ def use_cases():
 
 @router.get("/projects")
 def projects_list():
+    """プロジェクト（テナント）一覧。"""
     return {"items": list_projects()}
 
 
 @router.post("/projects")
 def projects_create(body: ProjectCreate):
+    """新規プロジェクトを作成する。"""
     return create_project(
         name=body.name,
         client_name=body.client_name,
@@ -489,8 +558,12 @@ def projects_create(body: ProjectCreate):
     )
 
 
+# --- フィードバック ---
+
+
 @router.post("/feedback")
 def feedback_create(body: FeedbackRequest):
+    """回答への thumbs up/down 等のフィードバックを記録する。"""
     try:
         return add_feedback(
             rating=body.rating,
@@ -508,16 +581,22 @@ def feedback_create(body: FeedbackRequest):
 
 @router.get("/feedback")
 def feedback_list():
+    """フィードバック一覧と集計サマリ。"""
     return {"items": list_feedback(), "summary": feedback_summary()}
+
+
+# --- データセット ---
 
 
 @router.get("/datasets")
 def datasets_list():
+    """評価用データセット一覧。"""
     return {"items": list_datasets()}
 
 
 @router.get("/datasets/{dataset_id}")
 def datasets_get(dataset_id: str):
+    """指定データセットの内容を取得する。"""
     ds = get_dataset(dataset_id)
     if not ds:
         raise HTTPException(404, "dataset not found")
@@ -526,6 +605,7 @@ def datasets_get(dataset_id: str):
 
 @router.post("/datasets")
 def datasets_create(body: DatasetCreate):
+    """評価用データセットを保存する。"""
     return save_dataset(
         name=body.name,
         items=body.items,
@@ -535,13 +615,18 @@ def datasets_create(body: DatasetCreate):
     )
 
 
+# --- テレメトリ / 運用サマリ ---
+
+
 @router.get("/metrics/summary")
 def metrics_summary():
+    """API テレメトリの集計サマリ。"""
     return telemetry_summary()
 
 
 @router.get("/ops/summary")
 def ops_summary():
+    """運用ダッシュボード向けの横断サマリ。"""
     from src.config import get_settings
 
     s = get_settings()
@@ -562,12 +647,16 @@ def ops_summary():
 
 
 class TestRunRequest(BaseModel):
+    """バックグラウンドテスト実行リクエスト。"""
     suites: list[str] = Field(default_factory=lambda: ["python", "frontend"])
+
+
+# --- テストランナー ---
 
 
 @router.post("/tests/run")
 def tests_run(body: TestRunRequest):
-    """Start pytest + vitest in background; poll GET /api/tests/runs/{id}."""
+    """pytest + vitest をバックグラウンド起動。GET /api/tests/runs/{id} でポーリング。"""
     from src.services.test_runner import start_tests_async
 
     try:
@@ -578,6 +667,7 @@ def tests_run(body: TestRunRequest):
 
 @router.get("/tests/latest")
 def tests_latest():
+    """直近のテスト実行結果。"""
     from src.services.test_runner import latest_run
 
     run = latest_run()
@@ -588,6 +678,7 @@ def tests_latest():
 
 @router.get("/tests/history")
 def tests_history(limit: int = 20):
+    """テスト実行履歴（件数上限あり）。"""
     from src.services.test_runner import list_runs
 
     return {"items": list_runs(limit=min(max(limit, 1), 50))}
@@ -595,6 +686,7 @@ def tests_history(limit: int = 20):
 
 @router.get("/tests/runs/{run_id}")
 def tests_get_run(run_id: str):
+    """指定 run_id のテスト実行詳細。"""
     from src.services.test_runner import get_run
 
     run = get_run(run_id)
@@ -604,17 +696,20 @@ def tests_get_run(run_id: str):
 
 
 class AnalysisTextRequest(BaseModel):
+    """分析ラボ: テキスト生成リクエスト。"""
     prompt: str
     project_id: Optional[str] = None
 
 
 class AnalysisRagRequest(BaseModel):
+    """分析ラボ: RAG クエリリクエスト。"""
     query: str
     use_case: str = "document_search"
     project_id: Optional[str] = None
 
 
 class AnalysisTabularRequest(BaseModel):
+    """分析ラボ: CSV 表形式データ分析リクエスト。"""
     csv_text: str
     target: Optional[str] = None
     task: str = "auto"
@@ -622,6 +717,7 @@ class AnalysisTabularRequest(BaseModel):
 
 
 class ExperimentCreate(BaseModel):
+    """実験ログ登録リクエスト。"""
     name: str
     modality: str
     params: dict[str, Any] = {}
@@ -632,6 +728,7 @@ class ExperimentCreate(BaseModel):
 
 
 class ModelRegister(BaseModel):
+    """モデルレジストリ登録リクエスト。"""
     name: str
     modality: str
     version: str = "0.1.0"
@@ -645,16 +742,22 @@ class ModelRegister(BaseModel):
 
 
 class ModelPromote(BaseModel):
+    """モデルステージ昇格リクエスト。"""
     to_stage: str
+
+
+# --- 分析ラボ ---
 
 
 @router.post("/analysis/text")
 def analysis_text(body: AnalysisTextRequest):
+    """分析用途のテキスト生成パイプラインを実行する。"""
     return analyze_text(body.prompt, project_id=body.project_id)
 
 
 @router.post("/analysis/image")
 def analysis_image(body: AnalysisTextRequest):
+    """分析用途の画像生成とプレビュー data URL 付与。"""
     out = analyze_image(body.prompt, project_id=body.project_id)
     if out.get("result"):
         out["result"]["data_url"] = decode_preview_data_url(out["result"].get("image_base64") or "")
@@ -663,11 +766,13 @@ def analysis_image(body: AnalysisTextRequest):
 
 @router.post("/analysis/rag")
 def analysis_rag(body: AnalysisRagRequest):
+    """分析用途の RAG パイプラインを実行する。"""
     return analyze_rag(body.query, use_case=body.use_case, project_id=body.project_id)
 
 
 @router.post("/analysis/tabular")
 def analysis_tabular(body: AnalysisTabularRequest):
+    """CSV 表データの分類/回帰等の分析を実行する。"""
     try:
         return analyze_tabular(
             body.csv_text,
@@ -681,16 +786,22 @@ def analysis_tabular(body: AnalysisTabularRequest):
 
 @router.get("/analysis/tabular/demo-csv")
 def analysis_tabular_demo():
+    """表分析デモ用のサンプル CSV を返す。"""
     return {"csv_text": synthesize_demo_csv(), "target": "churn"}
+
+
+# --- 実験管理 ---
 
 
 @router.get("/experiments")
 def experiments_list(modality: Optional[str] = None):
+    """実験ログ一覧（モダリティでフィルタ可）。"""
     return {"items": list_experiments(50, modality=modality)}
 
 
 @router.get("/experiments/{experiment_id}")
 def experiments_get(experiment_id: str):
+    """指定実験の詳細を取得する。"""
     exp = get_experiment(experiment_id)
     if not exp:
         raise HTTPException(404, "experiment not found")
@@ -699,6 +810,7 @@ def experiments_get(experiment_id: str):
 
 @router.post("/experiments")
 def experiments_create(body: ExperimentCreate):
+    """新規実験ログを記録する。"""
     return log_experiment(
         name=body.name,
         modality=body.modality,
@@ -710,13 +822,18 @@ def experiments_create(body: ExperimentCreate):
     )
 
 
+# --- モデルレジストリ ---
+
+
 @router.get("/models")
 def models_list(stage: Optional[str] = None):
+    """登録モデル一覧とアクティブモデル。"""
     return {"items": list_models(stage=stage), "active": active_models()}
 
 
 @router.get("/models/{model_id}")
 def models_get(model_id: str):
+    """指定モデルのメタデータを取得する。"""
     m = get_model(model_id)
     if not m:
         raise HTTPException(404, "model not found")
@@ -725,6 +842,7 @@ def models_get(model_id: str):
 
 @router.post("/models")
 def models_register(body: ModelRegister):
+    """モデルレジストリに新規モデルを登録する。"""
     try:
         return register_model(
             name=body.name,
@@ -744,6 +862,7 @@ def models_register(body: ModelRegister):
 
 @router.post("/models/{model_id}/promote")
 def models_promote(model_id: str, body: ModelPromote):
+    """モデルを指定ステージ（例: production）へ昇格する。"""
     try:
         return promote_model(model_id, body.to_stage)
     except KeyError:
@@ -752,23 +871,30 @@ def models_promote(model_id: str, body: ModelPromote):
         raise HTTPException(400, str(exc)) from exc
 
 
+# --- 品質モニタリング ---
+
+
 @router.get("/monitoring/series")
 def monitoring_series():
+    """品質メトリクス時系列データ。"""
     return {"items": monitor_series()}
 
 
 @router.post("/monitoring/snapshot")
 def monitoring_snapshot():
+    """現在の品質スナップショットを記録する。"""
     return record_monitor_snapshot(source="api")
 
 
 @router.get("/monitoring/alerts")
 def monitoring_alerts():
+    """品質アラート一覧。"""
     return quality_alerts()
 
 
 @router.get("/delivery/status")
 def delivery_status_api():
+    """デリバリー/リリース状態サマリ。"""
     return delivery_status()
 
 
@@ -776,6 +902,7 @@ def delivery_status_api():
 
 
 class GcpTextRequest(BaseModel):
+    """Vertex AI テキスト生成リクエスト。"""
     prompt: str
     system: Optional[str] = None
     max_tokens: int = 1024
@@ -784,6 +911,7 @@ class GcpTextRequest(BaseModel):
 
 
 class GcsUploadRequest(BaseModel):
+    """GCS ドキュメントアップロードリクエスト。"""
     filename: str
     content: str
     content_type: str = "text/plain"
@@ -792,6 +920,7 @@ class GcsUploadRequest(BaseModel):
 
 @router.get("/gcp/status")
 def gcp_status_api():
+    """GCP / Vertex / GCS の設定・利用可能状態。"""
     from src.gcp_clients import gcp_status
 
     return gcp_status()
@@ -799,6 +928,7 @@ def gcp_status_api():
 
 @router.post("/gcp/text")
 def gcp_text_generate(body: GcpTextRequest):
+    """Vertex AI でテキスト生成（任意でガードレール適用）。"""
     from src.services.vertex_text import generate_text_vertex
 
     try:
@@ -824,6 +954,7 @@ def gcp_text_generate(body: GcpTextRequest):
 
 @router.post("/gcp/storage/upload")
 def gcp_storage_upload(body: GcsUploadRequest):
+    """GCS（またはモックローカル）へドキュメントをアップロードする。"""
     from src.services.gcs_storage import upload_document
 
     return upload_document(
@@ -836,6 +967,7 @@ def gcp_storage_upload(body: GcsUploadRequest):
 
 @router.get("/gcp/storage/uploads")
 def gcp_storage_list():
+    """GCS アップロード済みファイル一覧。"""
     from src.services.gcs_storage import list_uploads
 
     return {"items": list_uploads()}
@@ -845,6 +977,7 @@ def gcp_storage_list():
 
 
 class CreditSubjectCreate(BaseModel):
+    """信用情報: 本人（被調査者）登録リクエスト。"""
     full_name: str
     birth_date: str
     phone: str = ""
@@ -854,6 +987,7 @@ class CreditSubjectCreate(BaseModel):
 
 
 class CreditContractCreate(BaseModel):
+    """信用情報: 契約（借入等）追加リクエスト。"""
     contract_type: str = "credit_card"
     lender: str
     credit_limit: int = 0
@@ -865,6 +999,7 @@ class CreditContractCreate(BaseModel):
 
 
 class CreditConsentCreate(BaseModel):
+    """信用情報: 本人同意記録リクエスト。"""
     purpose: str = "credit_inquiry"
     requester: str
     channel: str = "web"
@@ -872,6 +1007,7 @@ class CreditConsentCreate(BaseModel):
 
 
 class CreditInquiryCreate(BaseModel):
+    """信用情報: 照会（インフォメーション）記録リクエスト。"""
     requester: str
     purpose: str = "credit_review"
     inquiry_type: str = "hard"
@@ -880,6 +1016,7 @@ class CreditInquiryCreate(BaseModel):
 
 @router.get("/credit/subjects")
 def credit_subjects_list():
+    """信用情報: 登録済み本人一覧。"""
     from src.services.credit_info import list_subjects
 
     return {"items": list_subjects()}
@@ -887,6 +1024,7 @@ def credit_subjects_list():
 
 @router.post("/credit/subjects")
 def credit_subjects_create(body: CreditSubjectCreate):
+    """信用情報: 本人を新規登録する。"""
     from src.services.credit_info import register_subject
 
     return register_subject(
@@ -901,6 +1039,7 @@ def credit_subjects_create(body: CreditSubjectCreate):
 
 @router.get("/credit/subjects/{subject_id}")
 def credit_subjects_get(subject_id: str, reveal: bool = False):
+    """信用情報: 本人詳細（reveal で機微情報表示）。"""
     from src.services.credit_info import get_subject
 
     item = get_subject(subject_id, reveal=reveal)
@@ -911,6 +1050,7 @@ def credit_subjects_get(subject_id: str, reveal: bool = False):
 
 @router.post("/credit/subjects/{subject_id}/contracts")
 def credit_contracts_add(subject_id: str, body: CreditContractCreate):
+    """信用情報: 本人に契約情報を追加する。"""
     from src.services.credit_info import add_contract
 
     try:
@@ -931,6 +1071,7 @@ def credit_contracts_add(subject_id: str, body: CreditContractCreate):
 
 @router.get("/credit/subjects/{subject_id}/contracts")
 def credit_contracts_list(subject_id: str):
+    """信用情報: 本人の契約一覧。"""
     from src.services.credit_info import get_subject, list_contracts
 
     if not get_subject(subject_id):
@@ -940,6 +1081,7 @@ def credit_contracts_list(subject_id: str):
 
 @router.post("/credit/subjects/{subject_id}/consents")
 def credit_consents_add(subject_id: str, body: CreditConsentCreate):
+    """信用情報: 本人同意を記録する。"""
     from src.services.credit_info import record_consent
 
     try:
@@ -956,6 +1098,7 @@ def credit_consents_add(subject_id: str, body: CreditConsentCreate):
 
 @router.get("/credit/subjects/{subject_id}/consents")
 def credit_consents_list(subject_id: str):
+    """信用情報: 本人の同意履歴一覧。"""
     from src.services.credit_info import get_subject, list_consents
 
     if not get_subject(subject_id):
@@ -965,6 +1108,7 @@ def credit_consents_list(subject_id: str):
 
 @router.post("/credit/subjects/{subject_id}/inquiries")
 def credit_inquiries_add(subject_id: str, body: CreditInquiryCreate):
+    """信用情報: 照会を記録する（同意必須オプションあり）。"""
     from src.services.credit_info import record_inquiry
 
     try:
@@ -983,6 +1127,7 @@ def credit_inquiries_add(subject_id: str, body: CreditInquiryCreate):
 
 @router.get("/credit/subjects/{subject_id}/inquiries")
 def credit_inquiries_list(subject_id: str):
+    """信用情報: 本人への照会履歴一覧。"""
     from src.services.credit_info import get_subject, list_inquiries
 
     if not get_subject(subject_id):
@@ -992,6 +1137,7 @@ def credit_inquiries_list(subject_id: str):
 
 @router.get("/credit/subjects/{subject_id}/score")
 def credit_score_get(subject_id: str):
+    """信用情報: スコアを算出して返す。"""
     from src.services.credit_info import compute_score, get_subject
 
     if not get_subject(subject_id):
@@ -1001,6 +1147,7 @@ def credit_score_get(subject_id: str):
 
 @router.get("/credit/subjects/{subject_id}/report")
 def credit_report_get(subject_id: str, reveal: bool = False):
+    """信用情報: 本人レポートを組み立てて返す。"""
     from src.services.credit_info import build_report
 
     try:
@@ -1011,6 +1158,7 @@ def credit_report_get(subject_id: str, reveal: bool = False):
 
 @router.get("/credit/audit")
 def credit_audit_list(limit: int = 100, subject_id: Optional[str] = None):
+    """信用情報: 監査ログ一覧（件数・本人でフィルタ可）。"""
     from src.services.credit_info import list_audit
 
     return {"items": list_audit(limit=limit, subject_id=subject_id)}

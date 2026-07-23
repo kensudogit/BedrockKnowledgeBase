@@ -1,10 +1,16 @@
+"""GCP/Vertex AI連携（ステータス、テキスト生成、GCSアップロード）のテスト。"""
+
 from src.config import Settings
 from src.gcp_clients import gcp_status
 from src.services.gcs_storage import list_uploads, upload_document
 from src.services.vertex_text import generate_text_vertex
 
 
+# --- GCPステータス ---
+
+
 def test_gcp_status_unconfigured(monkeypatch):
+    """GCP未設定時のステータスとモックモードを確認する。"""
     monkeypatch.delenv("GCP_PROJECT_ID", raising=False)
     monkeypatch.setenv("USE_VERTEX_MOCK", "true")
     from src.config import get_settings
@@ -20,7 +26,11 @@ def test_gcp_status_unconfigured(monkeypatch):
     get_settings.cache_clear()
 
 
+# --- LLMプロバイダー ---
+
+
 def test_llm_provider_vertex_when_preferred(monkeypatch):
+    """PREFER_VERTEX設定時にvertexプロバイダーが選ばれることを確認する。"""
     monkeypatch.setenv("USE_BEDROCK_MOCK", "true")
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
     monkeypatch.delenv("AWS_ACCESS_KEY_ID", raising=False)
@@ -32,7 +42,11 @@ def test_llm_provider_vertex_when_preferred(monkeypatch):
     assert s.vertex_ready is True
 
 
+# --- Vertexテキスト生成 ---
+
+
 def test_vertex_text_mock_without_project(monkeypatch):
+    """プロジェクト未設定でもモックテキスト生成が動作することを確認する。"""
     monkeypatch.delenv("GCP_PROJECT_ID", raising=False)
     monkeypatch.setenv("USE_VERTEX_MOCK", "true")
     from src.config import get_settings
@@ -47,6 +61,7 @@ def test_vertex_text_mock_without_project(monkeypatch):
 
 
 def test_vertex_text_mock(monkeypatch):
+    """GCPプロジェクト設定下でモックテキスト生成が動作することを確認する。"""
     monkeypatch.setenv("GCP_PROJECT_ID", "demo-gcp")
     monkeypatch.setenv("USE_VERTEX_MOCK", "true")
     from src.config import get_settings
@@ -60,7 +75,11 @@ def test_vertex_text_mock(monkeypatch):
     get_settings.cache_clear()
 
 
+# --- GCSアップロード ---
+
+
 def test_gcs_upload_mock(monkeypatch, tmp_path):
+    """モックGCSへの文書アップロードと一覧取得を確認する。"""
     monkeypatch.setenv("GCP_PROJECT_ID", "demo-gcp")
     monkeypatch.setenv("USE_VERTEX_MOCK", "true")
     monkeypatch.delenv("GCS_DOCUMENTS_BUCKET", raising=False)

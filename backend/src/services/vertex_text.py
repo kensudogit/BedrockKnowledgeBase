@@ -1,4 +1,4 @@
-"""Vertex AI text generation via REST (Gemini), with mock fallback."""
+"""Vertex AI（Gemini）REST によるテキスト生成。未設定時はモック fallback。"""
 from __future__ import annotations
 
 from typing import Any
@@ -17,8 +17,9 @@ def generate_text_vertex(
     max_tokens: int = 1024,
     temperature: float = 0.3,
 ) -> dict[str, Any]:
+    """Vertex AI generateContent API でテキストを生成する（モック時も /gcp UI 用に成功）。"""
     settings = get_settings()
-    # Unconfigured / mock: always succeed so /gcp UI works without Railway GCP vars.
+    # 未設定 / モック: Railway GCP 変数なしでも /gcp UI が動くよう常に成功
     if settings.use_vertex_mock or not settings.gcp_configured or not resolve_access_token():
         if not settings.use_vertex_mock and not settings.gcp_configured:
             raise RuntimeError(

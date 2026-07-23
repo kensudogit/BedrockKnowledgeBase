@@ -1,4 +1,4 @@
-"""S3 document upload + Bedrock Knowledge Base ingestion (prod path)."""
+"""S3 ドキュメントアップロード + Bedrock Knowledge Base 取り込み（本番パス）。"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -17,6 +17,7 @@ def _record_job(job: dict[str, Any]) -> dict[str, Any]:
 
 
 def list_ingest_jobs(limit: int = 50) -> list[dict[str, Any]]:
+    """取り込みジョブ履歴を新しい順に返す。"""
     items = persist.load("ingest_jobs")
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return items[:limit]
@@ -30,8 +31,8 @@ def ingest_to_knowledge_base(
     project_id: str | None = None,
 ) -> dict[str, Any]:
     """
-    Always indexes locally for prototype.
-    When S3 + KB configured and not mock: upload to S3 and start KB ingestion.
+    常にローカル索引を更新する。
+    S3 + KB 設定済みかつ非モック時: S3 アップロード後 KB 取り込みを開始する。
     """
     settings = get_settings()
     job_id = str(uuid4())
@@ -66,8 +67,8 @@ def ingest_to_knowledge_base(
         job["status"] = "s3_uploaded"
 
         if settings.bedrock_knowledge_base_id:
-            # Start ingestion job if data source is configured via env naming convention
-            # DS/ops can also sync from console; here we attempt StartIngestionJob when DS id set.
+            # データソース ID 設定時は StartIngestionJob を試行
+            # コンソールからの同期も可能; DS ID 未設定時は手動同期
             ds_id = getattr(settings, "bedrock_data_source_id", "") or ""
             if ds_id:
                 resp = bedrock_agent().start_ingestion_job(
@@ -91,6 +92,7 @@ def ingest_to_knowledge_base(
 
 
 def get_ingestion_status(ingestion_job_id: str) -> dict[str, Any]:
+    """Bedrock KB 取り込みジョブのステータスを取得する。"""
     settings = get_settings()
     if settings.mock_mode or not settings.bedrock_knowledge_base_id:
         return {"status": "MOCK", "ingestion_job_id": ingestion_job_id}

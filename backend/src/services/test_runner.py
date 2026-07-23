@@ -1,4 +1,4 @@
-"""Run Python (pytest) and Frontend (vitest) suites; persist JSON for the Web UI."""
+"""Python (pytest) と Frontend (vitest) を実行し、Web UI 用 JSON を永続化。"""
 from __future__ import annotations
 
 import json
@@ -23,9 +23,9 @@ _ACTIVE: set[str] = set()
 
 def _resolve_layout() -> tuple[Path, Path]:
     """
-    Support both layouts:
-      - Local:  <repo>/backend/src/services/test_runner.py  + <repo>/frontend
-      - Docker: /app/src/services/test_runner.py            + /app/frontend
+    ローカルと Docker の両レイアウトに対応:
+      - ローカル: <repo>/backend/... + <repo>/frontend
+      - Docker:   /app/src/services/... + /app/frontend
     """
     here = Path(__file__).resolve()
     app_or_backend = here.parents[2]  # .../backend or /app
@@ -36,7 +36,7 @@ def _resolve_layout() -> tuple[Path, Path]:
         return app_or_backend, nested_frontend
     if sibling_frontend.is_dir() and (sibling_frontend / "package.json").exists():
         return app_or_backend, sibling_frontend
-    # Fallbacks for partial images
+    # 部分イメージ向けフォールバック
     if (app_or_backend / "tests").is_dir():
         return app_or_backend, nested_frontend
     return app_or_backend, sibling_frontend
@@ -65,7 +65,7 @@ def _empty_suite(suite: str, runner: str, error: str, duration_ms: int = 0) -> d
 
 
 def _collect_pytest() -> dict[str, Any]:
-    """Run pytest in-process and collect per-test results."""
+    """pytest を同一プロセスで実行し、テスト単位の結果を収集する。"""
     tests_dir = _BACKEND / "tests"
     if not tests_dir.is_dir():
         return _empty_suite(
@@ -144,7 +144,7 @@ def _collect_pytest() -> dict[str, Any]:
 
 
 def _collect_vitest() -> dict[str, Any]:
-    """Run vitest via npm; graceful skip if unavailable."""
+    """npm 経由で vitest を実行する（未インストール時は graceful skip）。"""
     pkg = _FRONTEND / "package.json"
     if not pkg.exists():
         return _empty_suite(
@@ -161,7 +161,7 @@ def _collect_vitest() -> dict[str, Any]:
             pass
 
     start = time.perf_counter()
-    # NODE_ENV=test is required — production React build has no React.act()
+    # 本番 React ビルドには React.act() が無いため NODE_ENV=test 必須
     env = {**os.environ, "CI": "1", "FORCE_COLOR": "0", "NODE_ENV": "test"}
     npm_cmd = ["npm", "run", "test:json"]
     try:
@@ -263,7 +263,7 @@ def _parse_ts(value: str | None) -> float:
 
 
 def reap_stale_runs(max_age_sec: int = 120) -> int:
-    """Mark abandoned status=running rows as timed out (e.g. worker crash)."""
+    """status=running のまま放置された実行をタイムアウトとしてマークする。"""
     now = time.time()
     items = load(_STORE)
     changed = 0
@@ -307,6 +307,7 @@ def run_tests(
     run_id: str | None = None,
     persist: bool = True,
 ) -> dict[str, Any]:
+    """指定スイートを同期実行し、集計結果を返す（必要なら永続化）。"""
     wanted = {s.lower() for s in (suites or ["python", "frontend"])}
     global _BACKEND, _FRONTEND
     _BACKEND, _FRONTEND = _resolve_layout()
@@ -384,7 +385,7 @@ def run_tests(
 
 
 def start_tests_async(suites: list[str] | None = None) -> dict[str, Any]:
-    """Return immediately with status=running; finish in a background thread."""
+    """即座に status=running を返し、バックグラウンドスレッドで完了させる。"""
     reap_stale_runs()
     wanted = [s.lower() for s in (suites or ["python", "frontend"])]
 
@@ -455,6 +456,7 @@ def start_tests_async(suites: list[str] | None = None) -> dict[str, Any]:
 
 
 def list_runs(limit: int = 20) -> list[dict[str, Any]]:
+    """テスト実行履歴の概要一覧を返す。"""
     reap_stale_runs()
     items = load(_STORE)
     items = sorted(items, key=lambda x: x.get("created_at") or "", reverse=True)
@@ -478,6 +480,7 @@ def list_runs(limit: int = 20) -> list[dict[str, Any]]:
 
 
 def get_run(run_id: str) -> dict[str, Any] | None:
+    """run_id に一致する実行レコードを返す。"""
     reap_stale_runs()
     for r in load(_STORE):
         if r.get("run_id") == run_id:
@@ -486,6 +489,7 @@ def get_run(run_id: str) -> dict[str, Any] | None:
 
 
 def latest_run() -> dict[str, Any] | None:
+    """直近のテスト実行レコードを返す。"""
     reap_stale_runs()
     items = load(_STORE)
     if not items:

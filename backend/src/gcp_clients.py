@@ -1,4 +1,4 @@
-"""GCP credential / status helpers (REST-friendly, no heavy SDK required)."""
+"""GCP 認証情報ヘルパー（REST 向け、重い SDK 不要）。"""
 from __future__ import annotations
 
 from typing import Any
@@ -7,6 +7,7 @@ from src.config import get_settings
 
 
 def gcp_status() -> dict[str, Any]:
+    """Vertex / GCS の設定状態と利用可能モードを返す。"""
     s = get_settings()
     mock_ok = bool(s.use_vertex_mock)
     live_ok = bool(
@@ -40,12 +41,12 @@ def gcp_status() -> dict[str, Any]:
 
 
 def resolve_access_token() -> str | None:
-    """Return Bearer token for Vertex/GCS REST, or None for mock path."""
+    """Vertex/GCS REST 用 Bearer トークンを返す。モックパスでは None。"""
     s = get_settings()
     token = s.gcp_access_token.strip()
     if token:
         return token
-    # Optional: load from ADC JSON via google-auth if installed
+    # 任意: google-auth があれば ADC JSON から取得
     cred_path = s.google_application_credentials.strip()
     if not cred_path:
         return None

@@ -1,3 +1,4 @@
+"""ローカルドキュメントのアップロード・一覧・削除。"""
 from __future__ import annotations
 
 import re
@@ -18,9 +19,10 @@ def _safe_name(name: str) -> str:
 
 
 def list_documents() -> list[dict[str, Any]]:
+    """メモリ上およびディスク上のドキュメント一覧を返す。"""
     root = uploads_dir()
     items = list(_DOCS.values())
-    # Also surface files on disk not yet in memory (after restart)
+    # 再起動後など、メモリ未登録のディスクファイルも含める
     known = {d.get("filename") for d in items}
     for path in sorted(root.glob("*")):
         if path.is_file() and path.name not in known and path.suffix.lower() in {".md", ".txt", ".text"}:
@@ -45,6 +47,7 @@ def ingest_text(
     content: str,
     content_type: str = "text/plain",
 ) -> dict[str, Any]:
+    """テキスト内容をファイルとして保存し、ローカル索引を更新する。"""
     root = uploads_dir()
     safe = _safe_name(filename if "." in filename else f"{filename}.md")
     doc_id = uuid4().hex[:12]
@@ -67,6 +70,7 @@ def ingest_text(
 
 
 def delete_document(document_id: str) -> bool:
+    """指定 ID のドキュメントを削除する。成功時 True。"""
     meta = _DOCS.pop(document_id, None)
     root = uploads_dir()
     removed = False

@@ -1,9 +1,12 @@
+"""信用情報サービス（被験者登録、契約、同意、照会、スコア、レポート）のテスト。"""
+
 import pytest
 
 from src.services import credit_info as ci
 
 
 def test_credit_subject_contract_score_flow():
+    """被験者登録からスコア算出・レポート生成までの一連フローを確認する。"""
     sub = ci.register_subject(
         full_name="山田太郎",
         birth_date="1990-01-15",
@@ -61,5 +64,6 @@ def test_credit_subject_contract_score_flow():
 
 
 def test_credit_report_not_found():
+    """存在しないIDでレポート生成時にValueErrorが発生することを確認する。"""
     with pytest.raises(ValueError):
         ci.build_report("missing-id")

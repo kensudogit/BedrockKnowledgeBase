@@ -1,3 +1,4 @@
+"""ユーザー回答フィードバック（👍/👎）の記録と集計。"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -18,6 +19,7 @@ def add_feedback(
     answer_preview: str = "",
     project_id: str | None = None,
 ) -> dict[str, Any]:
+    """評価（-1 または 1）と任意コメントを永続化する。"""
     if rating not in (-1, 1):
         raise ValueError("rating must be -1 or 1")
     item = {
@@ -37,12 +39,14 @@ def add_feedback(
 
 
 def list_feedback(limit: int = 100) -> list[dict[str, Any]]:
+    """フィードバック履歴を新しい順に返す。"""
     items = persist.load("feedback")
     items.sort(key=lambda x: x.get("created_at", ""), reverse=True)
     return items[:limit]
 
 
 def feedback_summary() -> dict[str, Any]:
+    """件数・賛否数・承認率のサマリを返す。"""
     items = persist.load("feedback")
     up = sum(1 for i in items if i.get("rating") == 1)
     down = sum(1 for i in items if i.get("rating") == -1)

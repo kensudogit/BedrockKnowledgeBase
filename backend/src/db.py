@@ -1,3 +1,4 @@
+"""PostgreSQL 接続・セッション管理と初期化。"""
 from __future__ import annotations
 
 from contextlib import contextmanager
@@ -15,6 +16,7 @@ SessionLocal: sessionmaker[Session] | None = None
 
 
 def get_engine() -> Engine:
+    """SQLAlchemy エンジンをシングルトン取得する。"""
     global _engine, SessionLocal
     if _engine is None:
         url = normalize_database_url(get_settings().database_url)
@@ -25,6 +27,7 @@ def get_engine() -> Engine:
 
 @contextmanager
 def get_session() -> Generator[Session, None, None]:
+    """トランザクション付き DB セッションをコンテキストマネージャで提供する。"""
     get_engine()
     assert SessionLocal is not None
     s = SessionLocal()
@@ -39,6 +42,7 @@ def get_session() -> Generator[Session, None, None]:
 
 
 def init_database() -> None:
+    """db/init.sql を読み込み、テーブルを初期化する（失敗時は無視）。"""
     sql = Path(__file__).resolve().parent.parent / "db" / "init.sql"
     if not sql.exists():
         return
@@ -57,6 +61,7 @@ def init_database() -> None:
 
 
 def database_ping() -> dict:
+    """DB 接続可否を SELECT 1 で確認し、結果を辞書で返す。"""
     try:
         with get_engine().connect() as conn:
             conn.execute(text("SELECT 1"))

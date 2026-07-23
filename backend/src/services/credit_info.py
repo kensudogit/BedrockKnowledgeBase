@@ -62,6 +62,7 @@ def register_subject(
     external_ref: str = "",
     notes: str = "",
 ) -> dict[str, Any]:
+    """信用情報の本人（被照会者）を新規登録する。"""
     subject_id = str(uuid4())
     item = {
         "subject_id": subject_id,
@@ -82,6 +83,7 @@ def register_subject(
 
 
 def public_subject(item: dict[str, Any], *, reveal: bool = False) -> dict[str, Any]:
+    """本人情報を公開用形式に変換する。reveal=True でマスクなし。"""
     if reveal:
         return {
             "subject_id": item["subject_id"],
@@ -109,11 +111,13 @@ def public_subject(item: dict[str, Any], *, reveal: bool = False) -> dict[str, A
 
 
 def list_subjects(limit: int = 100) -> list[dict[str, Any]]:
+    """登録済み本人一覧をマスク付きで返す。"""
     items = persist.load(_SUBJECTS)
     return [public_subject(x) for x in items[-limit:]]
 
 
 def get_subject(subject_id: str, *, reveal: bool = False) -> dict[str, Any] | None:
+    """指定 ID の本人情報を取得する。"""
     for item in persist.load(_SUBJECTS):
         if item.get("subject_id") == subject_id:
             return public_subject(item, reveal=reveal)
@@ -139,6 +143,7 @@ def add_contract(
     payment_status: str = "current",
     months_delinquent: int = 0,
 ) -> dict[str, Any]:
+    """本人に紐づく契約（カード・ローン等）を追加する。"""
     if not _raw_subject(subject_id):
         raise ValueError("subject not found")
     item = {
@@ -164,6 +169,7 @@ def add_contract(
 
 
 def list_contracts(subject_id: str) -> list[dict[str, Any]]:
+    """指定本人の契約一覧を返す。"""
     return [c for c in persist.load(_CONTRACTS) if c.get("subject_id") == subject_id]
 
 
@@ -175,6 +181,7 @@ def record_consent(
     channel: str = "web",
     expires_at: str = "",
 ) -> dict[str, Any]:
+    """信用情報照会の同意を記録する。"""
     if not _raw_subject(subject_id):
         raise ValueError("subject not found")
     item = {
@@ -193,10 +200,12 @@ def record_consent(
 
 
 def list_consents(subject_id: str) -> list[dict[str, Any]]:
+    """指定本人の同意履歴を返す。"""
     return [c for c in persist.load(_CONSENTS) if c.get("subject_id") == subject_id]
 
 
 def has_valid_consent(subject_id: str, purpose: str) -> bool:
+    """指定目的に対する有効な同意があるか判定する。"""
     now = datetime.now(timezone.utc)
     for c in list_consents(subject_id):
         if c.get("status") != "granted":
@@ -223,6 +232,7 @@ def record_inquiry(
     inquiry_type: str = "hard",
     require_consent: bool = True,
 ) -> dict[str, Any]:
+    """信用照会を記録する。require_consent 時は有効な同意が必要。"""
     if not _raw_subject(subject_id):
         raise ValueError("subject not found")
     if require_consent and not has_valid_consent(subject_id, purpose):
@@ -245,10 +255,12 @@ def record_inquiry(
 
 
 def list_inquiries(subject_id: str) -> list[dict[str, Any]]:
+    """指定本人の照会履歴を返す。"""
     return [i for i in persist.load(_INQUIRIES) if i.get("subject_id") == subject_id]
 
 
 def compute_score(subject_id: str) -> dict[str, Any]:
+    """契約・照会情報から簡易信用スコア（300–850）を算出する。"""
     contracts = list_contracts(subject_id)
     inquiries = list_inquiries(subject_id)
     score = 720
@@ -319,6 +331,7 @@ def compute_score(subject_id: str) -> dict[str, Any]:
 
 
 def build_report(subject_id: str, *, reveal: bool = False) -> dict[str, Any]:
+    """本人・契約・照会・同意・スコアを含む信用レポートを生成する。"""
     subject = get_subject(subject_id, reveal=reveal)
     if not subject:
         raise ValueError("subject not found")
@@ -338,6 +351,7 @@ def build_report(subject_id: str, *, reveal: bool = False) -> dict[str, Any]:
 
 
 def list_audit(limit: int = 100, subject_id: str | None = None) -> list[dict[str, Any]]:
+    """監査ログを返す。subject_id 指定時は本人でフィルタ。"""
     items = persist.load(_AUDIT)
     if subject_id:
         items = [a for a in items if a.get("subject_id") == subject_id]

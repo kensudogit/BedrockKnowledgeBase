@@ -1,4 +1,4 @@
-"""CLI for DS/CI: python -m src.scripts.run_eval --dataset golden_default --fail-under 0.3"""
+"""DS/CI 向け評価 CLI: python -m src.scripts.run_eval --dataset golden_default --fail-under 0.3"""
 from __future__ import annotations
 
 import argparse
@@ -9,6 +9,7 @@ from src.services.evaluation import run_model_evaluation
 
 
 def main() -> int:
+    """RAG 評価データセットを実行し、閾値未満なら終了コード 2 を返す。"""
     p = argparse.ArgumentParser(description="Run RAG evaluation dataset")
     p.add_argument("--dataset", default="golden_default")
     p.add_argument("--name", default=None)

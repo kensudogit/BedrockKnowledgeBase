@@ -1,4 +1,4 @@
-"""Durable JSON persistence under data/ops (works without Postgres)."""
+"""Postgres 不要の JSONL 永続化（data/ops 配下）。"""
 from __future__ import annotations
 
 import json
@@ -10,7 +10,7 @@ _LOCK = threading.Lock()
 
 
 def _root() -> Path:
-    """Pick a writable data/ops directory (Docker=/app, local=repo)."""
+    """書き込み可能な data/ops ディレクトリを選ぶ（Docker=/app、ローカル=repo）。"""
     here = Path(__file__).resolve()
     # here = .../src/services/persist.py → parents[2] is backend or /app
     candidates = (
@@ -38,6 +38,7 @@ def _path(collection: str) -> Path:
 
 
 def append(collection: str, item: dict[str, Any]) -> dict[str, Any]:
+    """コレクション JSONL に1件追記する。"""
     with _LOCK:
         with _path(collection).open("a", encoding="utf-8") as f:
             f.write(json.dumps(item, ensure_ascii=False) + "\n")
@@ -45,6 +46,7 @@ def append(collection: str, item: dict[str, Any]) -> dict[str, Any]:
 
 
 def load(collection: str, limit: int | None = None) -> list[dict[str, Any]]:
+    """コレクションを読み込む。limit 指定時は末尾 limit 件のみ。"""
     p = _path(collection)
     if not p.exists():
         return []
@@ -64,6 +66,7 @@ def load(collection: str, limit: int | None = None) -> list[dict[str, Any]]:
 
 
 def rewrite(collection: str, items: list[dict[str, Any]]) -> None:
+    """コレクションを全件上書きする。"""
     with _LOCK:
         with _path(collection).open("w", encoding="utf-8") as f:
             for item in items:

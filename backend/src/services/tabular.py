@@ -1,4 +1,4 @@
-"""Tabular data analysis & lightweight model training (DS / 受託向け)."""
+"""表形式データのプロファイル・相関・軽量ベースライン学習（DS / 受託向け）。"""
 from __future__ import annotations
 
 import csv
@@ -47,6 +47,7 @@ def _to_float_matrix(header: list[str], data: list[list[str]], target: str | Non
 
 
 def profile_tabular(csv_text: str) -> dict[str, Any]:
+    """CSV の列型・統計量・カテゴリ上位をプロファイルする。"""
     header, data = _parse_csv(csv_text)
     n = len(data)
     columns = []
@@ -91,13 +92,14 @@ def profile_tabular(csv_text: str) -> dict[str, Any]:
 
 
 def correlate_numeric(csv_text: str, max_cols: int = 8) -> dict[str, Any]:
+    """数値列のピアソン相関行列を計算する。"""
     header, data = _parse_csv(csv_text)
     X, _, feature_names, kept = _to_float_matrix(header, data, target=None)
     if X.shape[1] == 0:
         raise ValueError("no numeric columns")
     X = X[:, :max_cols]
     names = feature_names[:max_cols]
-    # pearson
+    # ピアソン相関
     Xc = X - X.mean(axis=0)
     std = X.std(axis=0)
     std[std == 0] = 1.0
@@ -119,9 +121,8 @@ def train_tabular_baseline(
     task: str = "auto",
 ) -> dict[str, Any]:
     """
-    Lightweight productionization baseline:
-    - regression: closed-form ridge
-    - classification: thresholded linear model on 0/1 labels
+    軽量な本番化ベースライン学習。
+    回帰: 閉形式リッジ / 分類: 0/1 ラベルへの線形閾値モデル。
     """
     header, data = _parse_csv(csv_text)
     if target not in header:
@@ -130,7 +131,7 @@ def train_tabular_baseline(
     if y is None or kept < 4:
         raise ValueError("need at least 4 numeric labeled rows")
 
-    # shuffle split 80/20
+    # 80/20 シャッフル分割
     rng = np.random.default_rng(42)
     idx = rng.permutation(len(X))
     cut = max(1, int(len(X) * 0.8))
@@ -142,7 +143,7 @@ def train_tabular_baseline(
 
     unique = set(np.unique(y).tolist())
     is_cls = task == "classification" or (task == "auto" and unique <= {0.0, 1.0})
-    # bias term
+    # バイアス項
     Xtr_b = np.c_[np.ones(len(Xtr)), Xtr]
     Xte_b = np.c_[np.ones(len(Xte)), Xte]
     lam = 1e-2
@@ -197,10 +198,10 @@ def synthesize_demo_csv(n: int = 80) -> str:
         tenure = rng.integers(1, 60)
         tickets = rng.integers(0, 12)
         nps = rng.integers(1, 11)
-        # simple latent rule
+        # 単純な潜在ルール
         logit = -2.0 + 0.03 * tickets + 0.04 * (10 - nps) - 0.02 * tenure
         churn = 1 if (1 / (1 + math.exp(-logit))) > 0.5 else 0
-        # add noise
+        # ノイズ付与
         if rng.random() < 0.08:
             churn = 1 - churn
         w.writerow([age, tenure, tickets, nps, churn])

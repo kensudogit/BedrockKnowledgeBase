@@ -1,4 +1,4 @@
-"""Export feedback + eval runs + telemetry for DS analysis (JSONL)."""
+"""フィードバック・評価・テレメトリ等を JSONL でエクスポート（DS 分析用）。"""
 from __future__ import annotations
 
 import argparse
@@ -9,6 +9,7 @@ from src.services import persist
 
 
 def main() -> None:
+    """永続化データを指定ディレクトリへ JSONL 形式で書き出す。"""
     p = argparse.ArgumentParser()
     p.add_argument("--out", default="export_ops")
     args = p.parse_args()

@@ -1,10 +1,16 @@
+"""永続化レイヤーとFastAPIエンドポイントのテスト。"""
+
 from fastapi.testclient import TestClient
 
 from src.main import app
 from src.services.persist import append, load, rewrite
 
 
+# --- 永続化 ---
+
+
 def test_persist_roundtrip(tmp_path, monkeypatch):
+    """永続化の書き込み・読み込み・上書きのラウンドトリップを確認する。"""
     monkeypatch.setenv("USE_BEDROCK_MOCK", "true")
     # use real persist path; unique collection name
     name = "unit_persist_demo"
@@ -18,7 +24,11 @@ def test_persist_roundtrip(tmp_path, monkeypatch):
     assert load(name) == [{"n": 9}]
 
 
+# --- APIエンドポイント ---
+
+
 def test_health_endpoint():
+    """ヘルスチェックエンドポイントが正常応答することを確認する。"""
     client = TestClient(app)
     r = client.get("/health")
     assert r.status_code == 200
@@ -29,6 +39,7 @@ def test_health_endpoint():
 
 
 def test_auth_token_requires_secret(monkeypatch):
+    """JWTシークレット未設定時にトークン発行が503を返すことを確認する。"""
     monkeypatch.setenv("JWT_SECRET", "")
     from src.config import get_settings
 
@@ -39,6 +50,7 @@ def test_auth_token_requires_secret(monkeypatch):
 
 
 def test_auth_token_ok(monkeypatch):
+    """トークン発行と/meエンドポイントによる認証を確認する。"""
     monkeypatch.setenv("JWT_SECRET", "api-test-secret")
     from src.config import get_settings
 

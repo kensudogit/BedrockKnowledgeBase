@@ -1,4 +1,4 @@
-"""GCS document upload (REST) with local mock fallback."""
+"""GCS ドキュメントアップロード（REST）— 未設定時はローカルモックにフォールバック。"""
 from __future__ import annotations
 
 import base64
@@ -21,12 +21,14 @@ def upload_document(
     content_type: str = "text/plain",
     project_id: str | None = None,
 ) -> dict[str, Any]:
+    """ドキュメントを GCS にアップロードする。GCP 未設定時はローカルモックに保存。"""
     settings = get_settings()
     object_name = f"documents/{datetime.now(timezone.utc).strftime('%Y%m%d')}/{uuid4().hex[:12]}_{filename}"
     raw = content.encode("utf-8") if isinstance(content, str) else content
     bucket = settings.gcs_documents_bucket.strip()
     token = resolve_access_token()
 
+    # ローカルモックフォールバック
     if settings.use_vertex_mock or not bucket or not token or not settings.gcp_configured:
         root = Path(__file__).resolve().parents[2] / "data" / "gcs_mock"
         root.mkdir(parents=True, exist_ok=True)
@@ -49,6 +51,7 @@ def upload_document(
         persist.append("gcs_uploads", item)
         return item
 
+    # GCS REST API アップロード
     url = f"https://storage.googleapis.com/upload/storage/v1/b/{bucket}/o"
     with httpx.Client(timeout=60.0) as client:
         resp = client.post(
@@ -86,10 +89,12 @@ def upload_document(
 
 
 def list_uploads(limit: int = 50) -> list[dict[str, Any]]:
+    """GCS アップロード履歴を返す。"""
     items = persist.load("gcs_uploads")
     return items[-limit:]
 
 
 def encode_preview(content: str, max_chars: int = 200) -> str:
+    """テキスト先頭を Base64 エンコードしてプレビュー用に返す。"""
     raw = content[:max_chars].encode("utf-8")
     return base64.b64encode(raw).decode("ascii")

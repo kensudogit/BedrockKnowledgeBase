@@ -1,3 +1,4 @@
+"""マルチテナント用プロジェクト管理（API キー解決・デフォルト seed）。"""
 from __future__ import annotations
 
 import hashlib
@@ -15,6 +16,7 @@ def _hash_key(api_key: str) -> str:
 
 
 def seed_default_project() -> dict[str, Any]:
+    """プロジェクトが空のときデモ用デフォルトを1件作成する。"""
     global _DEFAULT_SEEDED
     items = persist.load("projects")
     if items:
@@ -36,10 +38,11 @@ def seed_default_project() -> dict[str, Any]:
 
 
 def list_projects() -> list[dict[str, Any]]:
+    """プロジェクト一覧を返す（API キーはマスク）。"""
     items = persist.load("projects")
     if not items:
         return [seed_default_project()]
-    # never return raw hash only — mask api_key for list
+    # 一覧では生キーを返さず api_key をマスク
     out = []
     for p in items:
         out.append(
@@ -64,6 +67,7 @@ def create_project(
     api_key: str | None = None,
     notes: str = "",
 ) -> dict[str, Any]:
+    """新規プロジェクトを作成し API キーを発行する。"""
     key = api_key or f"bkb-{uuid4().hex[:16]}"
     proj = {
         "project_id": str(uuid4()),
@@ -88,6 +92,7 @@ def create_project(
 
 
 def resolve_project(api_key: str | None = None, project_id: str | None = None) -> dict[str, Any] | None:
+    """API キーまたは project_id からプロジェクトを解決する。"""
     items = persist.load("projects")
     if not items:
         items = [seed_default_project()]

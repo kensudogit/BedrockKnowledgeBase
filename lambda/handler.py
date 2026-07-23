@@ -15,6 +15,7 @@ INTERNAL_API = os.getenv("INTERNAL_FASTAPI_URL", "")
 
 
 def _response(status: int, body: dict[str, Any]) -> dict[str, Any]:
+    """API Gateway 形式の JSON レスポンス dict を組み立てる。"""
     return {
         "statusCode": status,
         "headers": {
@@ -26,6 +27,7 @@ def _response(status: int, body: dict[str, Any]) -> dict[str, Any]:
 
 
 def handler(event: dict[str, Any], _context: Any) -> dict[str, Any]:
+    """API Gateway HTTP API イベントを処理する Lambda エントリポイント。"""
     method = event.get("requestContext", {}).get("http", {}).get("method", "GET")
     path = event.get("rawPath") or event.get("path") or "/"
     body_raw = event.get("body") or "{}"

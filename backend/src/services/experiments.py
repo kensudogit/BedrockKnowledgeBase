@@ -1,4 +1,4 @@
-"""Experiment tracking for text / image / tabular / RAG analysis."""
+"""テキスト/画像/表形式/RAG 分析の実験トラッキング。"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -18,6 +18,7 @@ def log_experiment(
     project_id: str | None = None,
     notes: str = "",
 ) -> dict[str, Any]:
+    """分析実行のパラメータ・メトリクス・アーティファクトを永続化する。"""
     item = {
         "experiment_id": str(uuid4()),
         "name": name,
@@ -34,6 +35,7 @@ def log_experiment(
 
 
 def list_experiments(limit: int = 50, modality: str | None = None) -> list[dict[str, Any]]:
+    """実験履歴を新しい順に返す。modality でフィルタ可能。"""
     items = persist.load("experiments")
     if modality:
         items = [i for i in items if i.get("modality") == modality]
@@ -42,6 +44,7 @@ def list_experiments(limit: int = 50, modality: str | None = None) -> list[dict[
 
 
 def get_experiment(experiment_id: str) -> dict[str, Any] | None:
+    """指定 ID の実験レコードを取得する。"""
     for i in persist.load("experiments"):
         if i.get("experiment_id") == experiment_id:
             return i

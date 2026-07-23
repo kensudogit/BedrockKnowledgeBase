@@ -1,3 +1,4 @@
+"""API キー / JWT によるプロジェクト認可とミドルウェア設定。"""
 from __future__ import annotations
 
 from typing import Callable
@@ -12,8 +13,9 @@ def project_from_headers(
     x_api_key: str | None = Header(default=None, alias="X-API-Key"),
     x_project_id: str | None = Header(default=None, alias="X-Project-Id"),
 ) -> dict:
+    """ヘッダーからプロジェクトを解決し、API キーを検証する。"""
     settings = get_settings()
-    # Auth optional unless API_KEYS / require_api_key enabled
+    # 認証任意: API_KEYS / require_api_key が無効な場合
     if not settings.require_api_key and not settings.api_keys.strip():
         return resolve_project(x_api_key, x_project_id) or seed_default_project()
 
@@ -21,7 +23,7 @@ def project_from_headers(
     if settings.require_api_key and not x_api_key:
         raise HTTPException(401, "X-API-Key required")
     if allowed and x_api_key and x_api_key not in allowed:
-        # still allow project-scoped keys
+        # プロジェクトスコープのキーは引き続き許可
         proj = resolve_project(x_api_key, x_project_id)
         if not proj:
             raise HTTPException(403, "invalid API key")
@@ -33,7 +35,7 @@ def project_from_headers(
 
 
 def install_auth_middleware(app) -> None:
-    """Optional soft auth: attach project to request.state when key/JWT present."""
+    """任意のソフト認証: キー/JWT がある場合に request.state にプロジェクトを付与する。"""
 
     @app.middleware("http")
     async def _auth_mw(request: Request, call_next: Callable):

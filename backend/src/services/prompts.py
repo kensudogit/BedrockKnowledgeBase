@@ -1,3 +1,4 @@
+"""プロンプトテンプレートの CRUD（DynamoDB + メモリ fallback）。"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -9,7 +10,7 @@ from boto3.dynamodb.conditions import Key
 from src.aws_clients import dynamodb_resource
 from src.config import get_settings
 
-# In-memory fallback when DynamoDB Local is down
+# DynamoDB Local 停止時のインメモリ fallback
 _MEM: dict[str, dict[str, Any]] = {}
 
 
@@ -19,6 +20,7 @@ def _table():
 
 
 def list_prompts() -> list[dict[str, Any]]:
+    """登録済みプロンプトテンプレート一覧を返す。"""
     try:
         resp = _table().scan(Limit=100)
         return resp.get("Items", [])
@@ -27,6 +29,7 @@ def list_prompts() -> list[dict[str, Any]]:
 
 
 def get_prompt(prompt_id: str) -> dict[str, Any] | None:
+    """prompt_id に一致するテンプレートを返す。"""
     try:
         resp = _table().get_item(Key={"prompt_id": prompt_id})
         return resp.get("Item")
@@ -42,6 +45,7 @@ def upsert_prompt(
     variables: list[str] | None = None,
     prompt_id: str | None = None,
 ) -> dict[str, Any]:
+    """プロンプトテンプレートを新規作成または更新する。"""
     item = {
         "prompt_id": prompt_id or str(uuid4()),
         "name": name,
@@ -62,6 +66,7 @@ def upsert_prompt(
 
 
 def render_prompt(prompt_id: str, values: dict[str, str]) -> dict[str, Any]:
+    """{{変数}} を values で置換してレンダリングする。"""
     p = get_prompt(prompt_id)
     if not p:
         raise KeyError(prompt_id)
@@ -72,6 +77,7 @@ def render_prompt(prompt_id: str, values: dict[str, str]) -> dict[str, Any]:
 
 
 def seed_default_prompts() -> list[dict[str, Any]]:
+    """デモ用のデフォルトプロンプトセットを投入する。"""
     defaults = [
         {
             "name": "社内チャットボット",

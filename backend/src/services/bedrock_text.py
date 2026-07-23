@@ -1,3 +1,4 @@
+"""テキスト生成 — Bedrock / OpenAI / Vertex / モックのプロバイダ切替。"""
 from __future__ import annotations
 
 import json
@@ -15,9 +16,14 @@ def generate_text(
     temperature: float = 0.3,
     apply_guardrail: bool = True,
 ) -> dict[str, Any]:
+    """
+    設定に応じた LLM プロバイダでテキストを生成する。
+    ガードレール有効時は出力に安全フィルタを適用する。
+    """
     settings = get_settings()
     provider = settings.llm_provider
 
+    # OpenAI プロバイダ
     if provider == "openai":
         from src.services.openai_text import generate_text_openai
 
@@ -36,6 +42,7 @@ def generate_text(
                 out["text"] = gr["outputs"][0]["text"]
         return out
 
+    # Vertex AI プロバイダ
     if provider == "vertex":
         from src.services.vertex_text import generate_text_vertex
 
@@ -54,6 +61,7 @@ def generate_text(
                 out["text"] = gr["outputs"][0]["text"]
         return out
 
+    # モック / ローカルフォールバック
     if provider == "mock" or settings.mock_mode:
         out = mock_text(prompt, system=system)
         if apply_guardrail and settings.enable_guardrails:
@@ -65,6 +73,7 @@ def generate_text(
                 out["text"] = gr["outputs"][0]["text"]
         return out
 
+    # Bedrock ランタイム（デフォルト）
     from src.aws_clients import bedrock_runtime
 
     body: dict[str, Any] = {

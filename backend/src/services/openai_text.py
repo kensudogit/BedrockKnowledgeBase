@@ -1,4 +1,4 @@
-"""OpenAI Chat Completions via httpx (Railway OPENAI_API_KEY)."""
+"""OpenAI Chat Completions によるテキスト生成（httpx / Railway OPENAI_API_KEY）。"""
 from __future__ import annotations
 
 from typing import Any
@@ -15,6 +15,7 @@ def generate_text_openai(
     max_tokens: int = 1024,
     temperature: float = 0.3,
 ) -> dict[str, Any]:
+    """OpenAI API でテキストを生成し、使用量付きの結果 dict を返す。"""
     settings = get_settings()
     key = settings.openai_api_key.strip()
     if not key:

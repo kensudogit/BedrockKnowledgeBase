@@ -1,3 +1,4 @@
+"""データセットの一覧・取得・保存（ファイル + 永続化レジストリ）。"""
 from __future__ import annotations
 
 import json
@@ -24,6 +25,7 @@ def _datasets_dir() -> Path:
 
 
 def list_datasets() -> list[dict[str, Any]]:
+    """ファイルシステムと永続化レジストリからデータセット一覧を返す。"""
     out = []
     for path in sorted(_datasets_dir().glob("*.json")):
         try:
@@ -40,7 +42,7 @@ def list_datasets() -> list[dict[str, Any]]:
                 "path": path.name,
             }
         )
-    # custom datasets registered via API
+    # API 経由で登録されたカスタムデータセット
     for d in persist.load("datasets"):
         if not any(x["dataset_id"] == d.get("dataset_id") for x in out):
             out.append(
@@ -57,6 +59,7 @@ def list_datasets() -> list[dict[str, Any]]:
 
 
 def get_dataset(dataset_id: str) -> dict[str, Any] | None:
+    """指定 ID のデータセット定義を取得する。見つからない場合は None。"""
     for path in _datasets_dir().glob("*.json"):
         try:
             data = json.loads(path.read_text(encoding="utf-8"))
@@ -78,6 +81,7 @@ def save_dataset(
     description: str = "",
     version: str = "1.0.0",
 ) -> dict[str, Any]:
+    """新規データセットを永続化レジストリと JSON ファイルに保存する。"""
     did = dataset_id or f"ds-{uuid4().hex[:10]}"
     data = {
         "dataset_id": did,
@@ -86,7 +90,7 @@ def save_dataset(
         "description": description,
         "items": items,
     }
-    # persist registry + write file for DS visibility
+    # レジストリ永続化 + ファイル書き込み
     persist.append("datasets", data)
     path = _datasets_dir() / f"{did}.json"
     path.write_text(json.dumps(data, ensure_ascii=False, indent=2), encoding="utf-8")

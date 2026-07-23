@@ -1,3 +1,4 @@
+"""チャットセッションのインメモリ管理（メッセージ履歴・RAG 用 history）。"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -8,6 +9,7 @@ _SESSIONS: dict[str, dict[str, Any]] = {}
 
 
 def create_session(use_case: str = "document_search", title: str | None = None) -> dict[str, Any]:
+    """新規チャットセッションを作成する。"""
     sid = str(uuid4())
     now = datetime.now(timezone.utc).isoformat()
     sess = {
@@ -28,10 +30,12 @@ def create_session(use_case: str = "document_search", title: str | None = None) 
 
 
 def get_session(session_id: str) -> dict[str, Any] | None:
+    """session_id のセッション全体を返す。"""
     return _SESSIONS.get(session_id)
 
 
 def list_sessions(limit: int = 30) -> list[dict[str, Any]]:
+    """更新日時降順でセッション概要一覧を返す。"""
     items = sorted(_SESSIONS.values(), key=lambda s: s.get("updated_at", ""), reverse=True)
     return [
         {
@@ -54,6 +58,7 @@ def append_message(
     meta: dict[str, Any] | None = None,
     use_case: str = "document_search",
 ) -> dict[str, Any]:
+    """セッションにメッセージを追加する（存在しなければ自動作成）。"""
     sess = _SESSIONS.get(session_id)
     if not sess:
         now = datetime.now(timezone.utc).isoformat()
@@ -83,6 +88,7 @@ def append_message(
 
 
 def history_for_rag(session_id: str | None, limit: int = 8) -> list[dict[str, str]]:
+    """RAG 用に直近 limit 件の user/assistant 履歴を返す。"""
     if not session_id:
         return []
     sess = _SESSIONS.get(session_id)

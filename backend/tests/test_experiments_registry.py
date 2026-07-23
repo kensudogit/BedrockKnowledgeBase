@@ -1,8 +1,11 @@
+"""実験ログとモデルレジストリの登録・昇格テスト。"""
+
 from src.services.experiments import get_experiment, list_experiments, log_experiment
 from src.services.model_registry import list_models, promote_model, register_model
 
 
 def test_experiment_log_and_get():
+    """実験の記録・取得・一覧が動作することを確認する。"""
     exp = log_experiment(
         name="unit-exp",
         modality="text",
@@ -16,6 +19,7 @@ def test_experiment_log_and_get():
 
 
 def test_model_register_and_promote():
+    """モデル登録とステージ昇格が正しく行われることを確認する。"""
     m = register_model(
         name="unit-model",
         modality="text",

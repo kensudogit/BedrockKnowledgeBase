@@ -1,4 +1,4 @@
-"""Local mock implementations when Bedrock credentials / KB are unavailable."""
+"""Bedrock 未接続時に使うローカルモック実装（テキスト・画像・埋め込み・RAG 等）。"""
 from __future__ import annotations
 
 import base64
@@ -9,6 +9,7 @@ from typing import Any
 
 
 def mock_text(prompt: str, system: str | None = None) -> dict[str, Any]:
+    """テキスト生成のモック応答を返す。"""
     preface = (system + "\n") if system else ""
     body = (
         f"{preface}【モック応答】Bedrock 未接続のためローカル生成です。\n"
@@ -27,7 +28,7 @@ def mock_text(prompt: str, system: str | None = None) -> dict[str, Any]:
 
 
 def mock_image(prompt: str) -> dict[str, Any]:
-    """Visible SVG placeholder (1x1 PNG looked like a failure in the UI)."""
+    """UI で見える SVG プレースホルダ画像を返す（1x1 PNG は失敗に見えやすい）。"""
     safe = (
         prompt.replace("&", "&amp;")
         .replace("<", "&lt;")
@@ -63,19 +64,19 @@ def mock_image(prompt: str) -> dict[str, Any]:
 
 
 def mock_embed(texts: list[str], dim: int = 64) -> dict[str, Any]:
-    """Char n-gram hashing — better local similarity than whole-string SHA alone."""
+    """文字 n-gram ハッシュによる疑似埋め込み（文字列全体 SHA より類似度が安定）。"""
     vectors = []
     for t in texts:
         vals = [0.0] * dim
         s = t.lower()
-        # unigrams + bigrams + trigrams
+        # unigram + bigram + trigram
         grams = list(s) + [s[i : i + 2] for i in range(len(s) - 1)] + [s[i : i + 3] for i in range(len(s) - 2)]
         for g in grams[:800]:
             h = hashlib.md5(g.encode("utf-8")).digest()
             idx = h[0] % dim
             sign = 1.0 if h[1] % 2 == 0 else -1.0
             vals[idx] += sign
-        # blend whole-hash bias for stability
+        # 全体ハッシュのバイアスで安定化
         wh = hashlib.sha256(s.encode("utf-8")).digest()
         for i in range(dim):
             vals[i] += ((wh[i % len(wh)] / 255.0) * 2 - 1) * 0.15
@@ -85,6 +86,7 @@ def mock_embed(texts: list[str], dim: int = 64) -> dict[str, Any]:
 
 
 def mock_guardrail(text: str) -> dict[str, Any]:
+    """ガードレール判定のモック（禁止語で介入をシミュレート）。"""
     blocked_words = ["爆弾の作り方", "クレジットカード番号を全部教えて"]
     intervened = any(w in text for w in blocked_words)
     return {
@@ -96,6 +98,7 @@ def mock_guardrail(text: str) -> dict[str, Any]:
 
 
 def mock_rag(query: str, contexts: list[str]) -> dict[str, Any]:
+    """ローカル文書チャンクを根拠にした RAG 回答のモック。"""
     cites = contexts[:3]
     answer = (
         f"【RAGモック】クエリ「{query}」に対し、ローカル文書チャンク "
@@ -111,4 +114,5 @@ def mock_rag(query: str, contexts: list[str]) -> dict[str, Any]:
 
 
 def pack_f32(vec: list[float]) -> bytes:
+    """float ベクトルをバイナリ（struct pack）に変換する。"""
     return struct.pack(f"{len(vec)}f", *vec)

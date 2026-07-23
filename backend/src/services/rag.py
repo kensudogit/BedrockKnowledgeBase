@@ -1,3 +1,4 @@
+"""RAG 検索・回答（ローカル BM25+埋め込み / Bedrock Knowledge Base）。"""
 from __future__ import annotations
 
 import math
@@ -45,6 +46,7 @@ def _samples_dir() -> Path:
 
 
 def uploads_dir() -> Path:
+    """アップロード文書の保存ディレクトリを返す（存在しなければ作成）。"""
     here = Path(__file__).resolve()
     for candidate in (
         here.parents[3] / "data" / "uploads",
@@ -120,6 +122,7 @@ _INDEX_EPOCH = 0
 
 
 def invalidate_local_index() -> None:
+    """ローカルチャンク索引のキャッシュを無効化する。"""
     global _INDEX_EPOCH
     _INDEX_EPOCH += 1
     _load_local_chunk_records.cache_clear()
@@ -178,10 +181,11 @@ def _normalize_citation(raw: dict[str, Any], *, rank: int = 0) -> dict[str, Any]
 
 
 def retrieve_local(query: str, top_k: int = 5) -> list[dict[str, Any]]:
+    """ローカル索引から BM25 + 埋め込みハイブリッドで top_k 件を検索する。"""
     records = list(_load_local_chunk_records(_INDEX_EPOCH))
     docs = [r["text"] for r in records]
     bm25 = _bm25_scores(query, docs)
-    # Hybrid: BM25 prefilter then embedding re-rank on top candidates
+    # ハイブリッド: BM25 で絞り込み → 埋め込みで再ランク
     pre_n = min(24, len(records))
     pre_idx = sorted(range(len(records)), key=lambda i: bm25[i], reverse=True)[:pre_n]
     if not pre_idx:
@@ -217,6 +221,7 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def retrieve_knowledge_base(query: str, top_k: int = 5) -> dict[str, Any]:
+    """Bedrock KB またはローカル索引から引用を取得する。"""
     settings = get_settings()
     if settings.mock_mode or not settings.bedrock_knowledge_base_id:
         cites = retrieve_local(query, top_k=top_k)
@@ -248,7 +253,7 @@ def retrieve_knowledge_base(query: str, top_k: int = 5) -> dict[str, Any]:
 
 def _system_for_use_case(use_case: str) -> str:
     base = USE_CASE_SYSTEM.get(use_case) or USE_CASE_SYSTEM["document_search"]
-    # Prefer managed prompt template if one matches use_case
+    # use_case に一致する管理プロンプトがあれば system は base のまま
     try:
         for p in list_prompts():
             if p.get("use_case") == use_case and "{{question}}" in (p.get("template") or ""):
@@ -291,6 +296,7 @@ def rag_answer(
     history: list[dict[str, str]] | None = None,
     apply_guardrail: bool = True,
 ) -> dict[str, Any]:
+    """RAG パイプラインで回答・引用・ガードレール結果を返す。"""
     settings = get_settings()
     q = query.strip()
     if not q:
@@ -310,7 +316,7 @@ def rag_answer(
                 "mock": g_in.get("mock", False),
             }
 
-    # Live KB: single RetrieveAndGenerate (avoid double retrieve)
+    # 本番 KB: RetrieveAndGenerate を1回だけ（二重 retrieve を避ける）
     if not settings.mock_mode and settings.bedrock_knowledge_base_id:
         from src.aws_clients import bedrock_agent_runtime
 

@@ -1,3 +1,4 @@
+"""FastAPI アプリケーション本体: ルーター登録・CORS・テレメトリ・ヘルスチェック。"""
 from __future__ import annotations
 
 import time
@@ -15,6 +16,7 @@ from src.db import init_database
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    """起動時に DB・プロジェクト・DynamoDB/プロンプトを初期化する。"""
     init_database()
     try:
         from src.services.projects import seed_default_project
@@ -61,6 +63,7 @@ install_auth_middleware(app)
 
 @app.middleware("http")
 async def telemetry_middleware(request: Request, call_next):
+    """/api/* リクエストのレイテンシとステータスをテレメトリに記録する。"""
     start = time.perf_counter()
     response = await call_next(request)
     if not get_settings().enable_telemetry:
@@ -91,6 +94,7 @@ app.include_router(ai_router)
 
 @app.get("/", response_class=HTMLResponse)
 def root():
+    """トップページ（Web UI / Swagger / ヘルスへのリンク）。"""
     return """<!DOCTYPE html>
 <html lang="ja"><head><meta charset="utf-8"/><title>BKB API</title>
 <style>
@@ -112,6 +116,7 @@ a{color:#5ec8ff} h1 span{color:#5ec8ff}
 
 @app.get("/health")
 def health():
+    """サービス稼働状態と各機能の設定有無を返す。"""
     s = get_settings()
     from src.db import database_ping
 

@@ -1,3 +1,4 @@
+"""Bedrock Agents によるエージェント呼び出しサービス。"""
 from __future__ import annotations
 
 from typing import Any
@@ -40,7 +41,7 @@ def invoke_agent(message: str, *, session_id: str | None = None) -> dict[str, An
         sessionId=sid,
         inputText=message,
     )
-    # streaming completion
+    # ストリーミング応答の結合
     chunks = []
     for event in resp.get("completion", []):
         if "chunk" in event:

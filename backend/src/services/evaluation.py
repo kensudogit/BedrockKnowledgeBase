@@ -1,3 +1,4 @@
+"""RAG モデル評価 — ゴールデンデータセットによるキーワード・検索スコア計測。"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -35,6 +36,10 @@ def run_model_evaluation(
     project_id: str | None = None,
     fail_under: float | None = None,
 ) -> dict[str, Any]:
+    """
+    データセット各サンプルに対して RAG を実行し、スコアを集計する。
+    fail_under 指定時は合格/不合格を metrics に含める。
+    """
     settings = get_settings()
     ds = get_dataset(dataset_id)
     if not ds or not ds.get("items"):
@@ -107,6 +112,7 @@ def run_model_evaluation(
 
 
 def list_evaluations(limit: int = 20) -> list[dict[str, Any]]:
+    """評価実行履歴をファイル・DynamoDB・メモリからマージして返す。"""
     settings = get_settings()
     file_items = persist.load("eval_runs")
     try:
@@ -121,6 +127,7 @@ def list_evaluations(limit: int = 20) -> list[dict[str, Any]]:
 
 
 def compare_evaluations(eval_a: str, eval_b: str) -> dict[str, Any]:
+    """2 件の評価結果のメトリクス差分（B − A）を返す。"""
     runs = {r.get("eval_id"): r for r in list_evaluations(100)}
     a = runs.get(eval_a)
     b = runs.get(eval_b)

@@ -1,3 +1,4 @@
+"""環境変数ベースのアプリケーション設定（Pydantic Settings）。"""
 from functools import lru_cache
 from pathlib import Path
 from urllib.parse import urlparse
@@ -10,7 +11,7 @@ _ENV = _ROOT / ".env"
 
 
 def normalize_database_url(url: str) -> str:
-    """Railway often provides postgres://; SQLAlchemy wants postgresql://."""
+    """Railway の postgres:// を SQLAlchemy 向け postgresql:// に正規化する。"""
     u = (url or "").strip()
     if u.startswith("postgres://"):
         u = "postgresql://" + u[len("postgres://") :]
@@ -18,6 +19,8 @@ def normalize_database_url(url: str) -> str:
 
 
 class Settings(BaseSettings):
+    """Bedrock KB プラットフォームの全設定値。"""
+
     model_config = SettingsConfigDict(
         env_file=(str(_ENV), ".env"),
         env_file_encoding="utf-8",
@@ -28,7 +31,7 @@ class Settings(BaseSettings):
     aws_region: str = "ap-northeast-1"
     cors_origins: str = "http://localhost:3010,*"
     database_url: str = "postgresql://bkb_user:bkb_password@localhost:5435/bkb_db"
-    # Empty = real AWS DynamoDB (or in-memory fallback). Local: http://localhost:8001
+    # 空 = 本番 AWS DynamoDB（またはインメモリ）。ローカル: http://localhost:8001
     dynamodb_endpoint: str = ""
     dynamodb_table_prompts: str = "bkb_prompts"
     dynamodb_table_evals: str = "bkb_evals"
@@ -50,7 +53,7 @@ class Settings(BaseSettings):
     bedrock_agent_alias_id: str = ""
     s3_documents_bucket: str = ""
 
-    # Railway / shared secrets
+    # Railway / 共有シークレット
     openai_api_key: str = ""
     openai_text_model_id: str = "gpt-4o-mini"
     jwt_secret: str = ""
@@ -65,7 +68,7 @@ class Settings(BaseSettings):
     use_vertex_mock: bool = True
     prefer_vertex: bool = False
 
-    # Auth: comma-separated keys; require_api_key=true for staging/prod client demos
+    # 認証: カンマ区切りキー。staging/prod デモでは require_api_key=true
     api_keys: str = ""
     require_api_key: bool = False
     default_project_id: str = ""
@@ -86,22 +89,24 @@ class Settings(BaseSettings):
     @field_validator("dynamodb_endpoint", mode="before")
     @classmethod
     def _strip_local_dynamo_in_hint(cls, v: object) -> object:
-        # Treat blank / whitespace as unset
+        # 空白のみは未設定として扱う
         if isinstance(v, str):
             return v.strip()
         return v
 
     @property
     def cors_origin_list(self) -> list[str]:
+        """CORS 許可オリジンをリストで返す。"""
         return [o.strip() for o in self.cors_origins.split(",") if o.strip()]
 
     @property
     def is_production(self) -> bool:
+        """本番またはステージング環境かどうか。"""
         return self.app_env.lower() in {"production", "prod", "staging"}
 
     @property
     def effective_dynamodb_endpoint(self) -> str:
-        """Ignore localhost DynamoDB endpoint on Railway/production."""
+        """本番/Railway では localhost DynamoDB エンドポイントを無視する。"""
         ep = (self.dynamodb_endpoint or "").strip()
         if self.is_production and ("localhost" in ep or "127.0.0.1" in ep):
             return ""
@@ -109,10 +114,11 @@ class Settings(BaseSettings):
 
     @property
     def database_configured(self) -> bool:
+        """Railway 等のリモート PostgreSQL が設定されているか。"""
         u = self.database_url.lower()
         if not u:
             return False
-        # default local template without Railway host
+        # デフォルトのローカルテンプレート（Railway ホストなし）
         if "localhost:5435" in u or "127.0.0.1:5435" in u:
             return False
         host = urlparse(u).hostname or ""
@@ -120,23 +126,27 @@ class Settings(BaseSettings):
 
     @property
     def openai_configured(self) -> bool:
+        """OpenAI API キーが設定されているか。"""
         return bool(self.openai_api_key.strip())
 
     @property
     def jwt_configured(self) -> bool:
+        """JWT 署名用シークレットが設定されているか。"""
         return bool(self.jwt_secret.strip())
 
     @property
     def bedrock_credentials_configured(self) -> bool:
+        """AWS アクセスキーが設定されているか。"""
         return bool(self.aws_access_key_id.strip())
 
     @property
     def gcp_configured(self) -> bool:
+        """GCP プロジェクト ID が設定されているか。"""
         return bool(self.gcp_project_id.strip())
 
     @property
     def vertex_ready(self) -> bool:
-        """Vertex path available: mock always, or real when project + token/creds."""
+        """Vertex パスが利用可能か（モック常時、または project + トークン/認証情報）。"""
         if self.use_vertex_mock:
             return True
         if not self.gcp_configured:
@@ -145,17 +155,17 @@ class Settings(BaseSettings):
 
     @property
     def mock_mode(self) -> bool:
-        """True when Bedrock Runtime path is mocked / unavailable."""
+        """Bedrock Runtime パスがモック/利用不可かどうか。"""
         return bool(self.use_bedrock_mock) or not (
             self.aws_access_key_id or self.bedrock_knowledge_base_id
         )
 
     @property
     def llm_provider(self) -> str:
-        """Provider used for text generation (chat / RAG answer)."""
+        """テキスト生成（チャット/RAG 回答）に使うプロバイダ名。"""
         if not self.use_bedrock_mock and self.bedrock_credentials_configured:
             return "bedrock"
-        # Prefer Vertex for chat only when a project is configured (mock or live).
+        # プロジェクト設定時のみ Vertex をチャット優先
         if self.prefer_vertex and self.gcp_configured and self.vertex_ready:
             return "vertex"
         if self.openai_configured:
@@ -167,4 +177,5 @@ class Settings(BaseSettings):
 
 @lru_cache
 def get_settings() -> Settings:
+    """設定シングルトンを返す（lru_cache でキャッシュ）。"""
     return Settings()

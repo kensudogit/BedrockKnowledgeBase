@@ -1,4 +1,4 @@
-"""Model registry + promotion for productionization (dev → staging → production)."""
+"""モデルレジストリとステージ昇格（development → staging → production）。"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -16,6 +16,7 @@ def _now() -> str:
 
 
 def list_models(stage: str | None = None) -> list[dict[str, Any]]:
+    """登録済みモデル一覧を返す。stage 指定時はそのステージのみ。"""
     items = persist.load("model_registry")
     if stage:
         items = [m for m in items if m.get("stage") == stage]
@@ -24,6 +25,7 @@ def list_models(stage: str | None = None) -> list[dict[str, Any]]:
 
 
 def get_model(model_id: str) -> dict[str, Any] | None:
+    """model_id に一致するモデルレコードを返す。"""
     for m in persist.load("model_registry"):
         if m.get("model_id") == model_id:
             return m
@@ -43,6 +45,7 @@ def register_model(
     stage: str = "development",
     meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """新規モデルをレジストリに登録する。"""
     if stage not in STAGES:
         raise ValueError(f"stage must be one of {STAGES}")
     settings = get_settings()
@@ -76,6 +79,7 @@ def register_model(
 
 
 def promote_model(model_id: str, to_stage: str) -> dict[str, Any]:
+    """モデルを指定ステージへ昇格する（production 時は同モダリティの旧本番を staging へ）。"""
     if to_stage not in STAGES:
         raise ValueError(f"stage must be one of {STAGES}")
     items = persist.load("model_registry")
@@ -89,7 +93,7 @@ def promote_model(model_id: str, to_stage: str) -> dict[str, Any]:
     order = {s: i for i, s in enumerate(STAGES)}
     if order[to_stage] < order.get(found.get("stage", "development"), 0):
         raise ValueError("cannot demote via promote; register a new version instead")
-    # deactivate other production models of same modality when promoting to production
+    # production 昇格時: 同モダリティの既存 production を staging へ降格
     if to_stage == "production":
         for m in items:
             if (
@@ -108,7 +112,7 @@ def promote_model(model_id: str, to_stage: str) -> dict[str, Any]:
 
 
 def active_models() -> dict[str, Any]:
-    """Pinned production (else staging/dev) model per modality for runtime routing."""
+    """ランタイムルーティング用に、モダリティごとのアクティブモデル（production 優先）を返す。"""
     items = list_models()
     by_mod: dict[str, dict[str, Any]] = {}
     for stage in ("production", "staging", "development"):

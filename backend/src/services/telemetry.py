@@ -1,3 +1,4 @@
+"""API リクエストのテレメトリ記録と集計。"""
 from __future__ import annotations
 
 from collections import defaultdict
@@ -20,6 +21,7 @@ def record_event(
     mock: bool | None = None,
     meta: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """1 リクエスト分のテレメトリイベントを永続化する。"""
     event = {
         "event_id": str(uuid4()),
         "request_id": str(uuid4()),
@@ -39,6 +41,7 @@ def record_event(
 
 
 def summarize(limit: int = 500) -> dict[str, Any]:
+    """直近 limit 件のレイテンシ・エラー率・パス別集計を返す。"""
     events = persist.load("telemetry", limit=limit)
     if not events:
         return {

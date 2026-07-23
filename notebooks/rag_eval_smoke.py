@@ -1,6 +1,7 @@
 """
-Lightweight DS notebook substitute (plain Python).
-Usage (API running on :8180):
+RAG 評価の軽量スモーク（プレーン Python、ノートブック代替）。
+
+API が :8180 で起動している前提:
   py -3.12 notebooks/rag_eval_smoke.py
 """
 from __future__ import annotations
@@ -12,6 +13,7 @@ BASE = "http://127.0.0.1:8180"
 
 
 def post(path: str, payload: dict):
+    """POST JSON を送り、レスポンス dict を返す。"""
     req = urllib.request.Request(
         BASE + path,
         data=json.dumps(payload).encode("utf-8"),
@@ -23,11 +25,13 @@ def post(path: str, payload: dict):
 
 
 def get(path: str):
+    """GET リクエストの JSON レスポンスを返す。"""
     with urllib.request.urlopen(BASE + path, timeout=30) as resp:
         return json.loads(resp.read().decode("utf-8"))
 
 
 def main() -> None:
+    """チャット・フィードバック・評価・ops サマリの一連スモークを実行する。"""
     print("health:", get("/health").get("app_env"), "mock=", get("/health").get("mock_mode"))
     chat = post("/api/chat", {"message": "有給休暇の申請手順は？", "use_case": "faq", "mode": "rag"})
     print("chat citations:", len(chat.get("citations") or []))

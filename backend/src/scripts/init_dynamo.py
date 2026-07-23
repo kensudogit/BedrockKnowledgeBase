@@ -1,4 +1,4 @@
-"""Create local DynamoDB tables for prompts / evals / sessions."""
+"""ローカル DynamoDB テーブル（プロンプト/評価/セッション）の作成。"""
 from __future__ import annotations
 
 import time
@@ -9,6 +9,7 @@ from src.services.prompts import seed_default_prompts
 
 
 def ensure_table(name: str, key: str = "prompt_id") -> None:
+    """指定名の DynamoDB テーブルが無ければ PAY_PER_REQUEST で作成する。"""
     dyn = dynamodb_resource()
     try:
         existing = [t.name for t in dyn.tables.all()]
@@ -33,8 +34,9 @@ def ensure_table(name: str, key: str = "prompt_id") -> None:
 
 
 def main() -> None:
+    """環境に応じて DynamoDB テーブル作成またはメモリ上のプロンプトをシードする。"""
     s = get_settings()
-    # Railway / mock: skip remote DynamoDB (avoids long AWS connect timeouts)
+    # Railway / モック: リモート DynamoDB をスキップ（AWS 接続タイムアウト回避）
     if not s.dynamodb_endpoint and s.mock_mode:
         seeded = seed_default_prompts()
         print(f"seeded prompts (memory): {len(seeded)}")

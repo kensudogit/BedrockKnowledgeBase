@@ -1,3 +1,5 @@
+"""開発用 Uvicorn サーバー起動エントリポイント。"""
+
 import os
 
 import uvicorn

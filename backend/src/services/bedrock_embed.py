@@ -1,3 +1,4 @@
+"""Bedrock 埋め込みモデルによるテキストベクトル化。"""
 from __future__ import annotations
 
 import json
@@ -8,6 +9,7 @@ from src.services.mock_ai import mock_embed
 
 
 def embed_texts(texts: list[str]) -> dict[str, Any]:
+    """テキストリストを埋め込みベクトルに変換する。モック時はダミーベクトルを返す。"""
     settings = get_settings()
     if not texts:
         return {"embeddings": [], "dimensions": 0, "model": settings.bedrock_embed_model_id, "mock": settings.mock_mode}

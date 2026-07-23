@@ -1,4 +1,4 @@
-"""Continuous accuracy / quality monitoring for AI apps in production."""
+"""本番 AI アプリ向けの継続的な精度・品質モニタリング。"""
 from __future__ import annotations
 
 from datetime import datetime, timezone
@@ -17,6 +17,7 @@ def record_monitor_snapshot(
     approval_rate: float | None = None,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """評価・フィードバック・テレメトリから品質スナップショットを記録する。"""
     fb = feedback_summary()
     tele = telemetry_summary(200)
     evals = list_evaluations(1)
@@ -40,6 +41,7 @@ def record_monitor_snapshot(
 
 
 def monitor_series(limit: int = 48) -> list[dict[str, Any]]:
+    """直近 limit 件のモニタリング時系列を返す。"""
     items = persist.load("monitor_snapshots")
     items.sort(key=lambda x: x.get("created_at", ""))
     return items[-limit:]
@@ -51,6 +53,7 @@ def quality_alerts(
     min_approval: float = 0.5,
     max_error_rate: float = 0.15,
 ) -> dict[str, Any]:
+    """閾値とトレンドに基づく品質アラートを判定する。"""
     series = monitor_series(12)
     latest = series[-1] if series else record_monitor_snapshot(source="auto")
     alerts = []
@@ -81,7 +84,7 @@ def quality_alerts(
                 "message": f"error_rate {er} > {max_error_rate}",
             }
         )
-    # trend: last 3 vs previous 3
+    # トレンド: 直近3件 vs その前3件
     if len(series) >= 6:
         recent = [s.get("combined_score") for s in series[-3:] if s.get("combined_score") is not None]
         prev = [s.get("combined_score") for s in series[-6:-3] if s.get("combined_score") is not None]
@@ -103,7 +106,7 @@ def quality_alerts(
 
 
 def delivery_status() -> dict[str, Any]:
-    """CI/CD + runtime readiness checklist for continuous delivery."""
+    """CI/CD とランタイムの準備状況チェックリストを返す。"""
     from src.config import get_settings
     from src.services.model_registry import active_models, list_models
 

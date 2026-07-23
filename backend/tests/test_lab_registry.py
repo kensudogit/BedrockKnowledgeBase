@@ -1,3 +1,5 @@
+"""ラボ機能（表形式・テキスト分析、モデル登録、モニタリング）のテスト。"""
+
 from src.services.analysis import analyze_tabular, analyze_text
 from src.services.model_registry import active_models, list_models, promote_model, register_model
 from src.services.monitoring import quality_alerts, record_monitor_snapshot
@@ -5,6 +7,7 @@ from src.services.tabular import synthesize_demo_csv, train_tabular_baseline
 
 
 def test_tabular_train_and_register():
+    """表形式データの学習・分析・モデル登録フローを確認する。"""
     csv_text = synthesize_demo_csv(60)
     trained = train_tabular_baseline(csv_text, target="churn", task="classification")
     assert trained["metrics"]["task"] == "classification"
@@ -25,6 +28,7 @@ def test_tabular_train_and_register():
 
 
 def test_text_analysis_and_monitoring():
+    """テキスト分析と品質モニタリングを確認する。"""
     out = analyze_text("短い要約テスト")
     assert out["experiment"]["modality"] == "text"
     snap = record_monitor_snapshot(source="unit", combined_score=0.9, approval_rate=0.8)

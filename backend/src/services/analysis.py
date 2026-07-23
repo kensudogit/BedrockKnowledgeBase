@@ -1,4 +1,4 @@
-"""Unified analysis entry for generative / NLP / image / tabular modalities."""
+"""生成/自然言語/画像/表形式などモダリティ別の統合分析エントリ。"""
 from __future__ import annotations
 
 from typing import Any
@@ -12,6 +12,7 @@ from src.services.tabular import correlate_numeric, profile_tabular, train_tabul
 
 
 def analyze_text(prompt: str, *, project_id: str | None = None) -> dict[str, Any]:
+    """テキスト生成・埋め込みを実行し、実験ログを記録する。"""
     out = generate_text(prompt, system="分析結果を箇条書きで簡潔に日本語でまとめてください。")
     emb = embed_texts([prompt])
     exp = log_experiment(
@@ -30,6 +31,7 @@ def analyze_text(prompt: str, *, project_id: str | None = None) -> dict[str, Any
 
 
 def analyze_image(prompt: str, *, project_id: str | None = None) -> dict[str, Any]:
+    """画像生成を実行し、実験ログを記録する。"""
     out = generate_image(prompt)
     exp = log_experiment(
         name="image-generation",
@@ -43,6 +45,7 @@ def analyze_image(prompt: str, *, project_id: str | None = None) -> dict[str, An
 
 
 def analyze_rag(query: str, *, use_case: str = "document_search", project_id: str | None = None) -> dict[str, Any]:
+    """RAG 検索・回答を実行し、実験ログを記録する。"""
     out = rag_answer(query, use_case=use_case)
     exp = log_experiment(
         name="rag-analysis",
@@ -66,6 +69,7 @@ def analyze_tabular(
     task: str = "auto",
     project_id: str | None = None,
 ) -> dict[str, Any]:
+    """表形式データのプロファイル・相関・ベースライン学習を実行する。"""
     profile = profile_tabular(csv_text)
     corr = None
     try:

@@ -1,4 +1,4 @@
-"""Minimal HS256 JWT using Railway JWT_SECRET (stdlib only)."""
+"""HS256 JWT の発行・検証（Railway JWT_SECRET、標準ライブラリのみ）。"""
 from __future__ import annotations
 
 import base64
@@ -30,6 +30,7 @@ def issue_access_token(
     expires_in_sec: int = 3600,
     extra: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
+    """アクセストークン（JWT）を発行する。JWT_SECRET 未設定時は RuntimeError。"""
     settings = get_settings()
     secret = settings.jwt_secret.strip()
     if not secret:
@@ -56,6 +57,7 @@ def issue_access_token(
 
 
 def verify_access_token(token: str) -> dict[str, Any] | None:
+    """JWT の署名と有効期限を検証する。無効時は None。"""
     settings = get_settings()
     secret = settings.jwt_secret.strip()
     if not secret or not token:
