@@ -1,5 +1,16 @@
 # Bedrock Knowledge Base Platform
 
+
+## Portfolio Overview
+
+| | |
+|---|---|
+| **Problem** | Enterprise generative-AI systems need more than model calls: retrieval, safety, evaluation, operations and repeatable infrastructure are required. |
+| **Solution** | AWS-oriented GenAI platform combining RAG, Agents, Guardrails, model evaluation, prompt management and operational workflows. |
+| **Architecture** | Documents/S3 → Knowledge Base/RAG → Bedrock/Agents → API layer → Next.js UI, with local FastAPI equivalents and Terraform IaC. |
+| **Differentiators** | Hybrid retrieval, citations, guardrails, evaluation gates, project isolation, telemetry, feedback datasets and local/mock development. |
+| **Stack** | Python 3.12 · FastAPI · Next.js 15 · PostgreSQL · DynamoDB · AWS Bedrock · S3 · Lambda · API Gateway · Terraform |
+
 AWS 上のエンタープライズ向け生成 AI 基盤（ローカル開発 + Terraform IaC）。
 
 ## 主な機能
