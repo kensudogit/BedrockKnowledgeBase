@@ -167,3 +167,41 @@ BedrockKnowledgeBase/
 └── docker-compose.yml
 ```
 "# BedrockKnowledgeBase" 
+
+---
+
+## Portfolio Evidence & Maturity
+
+This repository is presented as an **enterprise GenAI engineering platform**, not as a claim that every supported cloud service is production-certified.
+
+| Evidence area | Repository evidence | Portfolio interpretation |
+|---|---|---|
+| Retrieval | Hybrid RAG, document ingestion, citations | Retrieval quality and evidence handling are explicit system concerns |
+| Safety | Guardrails on RAG input/output | Safety controls are represented in the application architecture |
+| Evaluation | Dataset/evaluation API and CLI quality gate | Quality can be measured and regression-gated |
+| Operations | Projects, API-key separation, telemetry, feedback | Multi-project operation and feedback loops are modeled |
+| Deployment | Docker/Railway plus Terraform/AWS path | Local demonstration and cloud deployment are separated |
+| Development | Bedrock mock mode | Core workflows can be demonstrated without live AWS credentials |
+
+### Reviewer demo path
+
+A reviewer can evaluate the engineering story in this order:
+
+1. Start in mock/local mode and open the API documentation.
+2. Ingest a sample document through the Documents workflow.
+3. Run a RAG query and inspect the returned citation/evidence.
+4. Apply the Guardrails workflow to demonstrate controlled input/output.
+5. Run the evaluation workflow or Eval CLI and inspect the quality threshold.
+6. Review Terraform separately to understand the intended AWS deployment boundary.
+
+### Evaluation principles
+
+- **Grounding:** answers should retain identifiable source evidence where the workflow supports citations.
+- **Safety:** guardrail behavior is tested independently from retrieval quality.
+- **Regression:** evaluation datasets and thresholds are treated as versioned engineering assets.
+- **Observability:** latency, error rate and user feedback are operational signals, not substitutes for answer-quality evaluation.
+- **Reproducibility:** mock/local execution is kept separate from claims about live AWS behavior.
+
+### Maturity boundary
+
+The repository demonstrates architecture, integration patterns, evaluation workflow and deployment automation. Production adoption still requires environment-specific IAM, network controls, data classification, security review, load/cost validation and operational SLOs.
