@@ -14,10 +14,16 @@ export type ChatMessage = {
   created_at?: string;
 };
 
+import { authHeaders } from "./auth";
+
 async function json<T>(path: string, init?: RequestInit): Promise<T> {
   const res = await fetch(path, {
     ...init,
-    headers: { "Content-Type": "application/json", ...(init?.headers || {}) },
+    headers: {
+      "Content-Type": "application/json",
+      ...authHeaders(),
+      ...(init?.headers || {}),
+    },
     cache: "no-store",
   });
   if (!res.ok) {

@@ -1,5 +1,32 @@
-aws_region             = "ap-northeast-1"
-project                = "bkb"
-documents_bucket_name  = "your-org-bkb-documents-unique"
-bedrock_knowledge_base_id = "XXXXXXXXXX"
-bedrock_guardrail_id      = "XXXXXXXXXX"
+# コピー: cp terraform.tfvars.example terraform.local.tfvars
+# ローカル上書きは terraform.local.tfvars（gitignore）を -var-file で指定
+
+aws_region = "ap-northeast-1"
+project    = "bkb"
+
+documents_bucket_name = "bkb-YOUR-SUFFIX-documents-apne1"
+
+app_env          = "staging"
+use_bedrock_mock = "false"
+require_api_key  = "false"
+
+enable_cognito        = true
+cognito_domain_prefix = ""
+
+cognito_callback_urls = [
+  "http://localhost:3010/auth/callback",
+  "https://YOUR-APP.example.com/auth/callback",
+]
+
+cognito_logout_urls = [
+  "http://localhost:3010/login",
+  "https://YOUR-APP.example.com/login",
+]
+
+lambda_zip_path = "../lambda/dist/api.zip"
+
+bedrock_knowledge_base_id = ""
+bedrock_data_source_id    = ""
+bedrock_guardrail_id      = ""
+
+log_retention_days = 30

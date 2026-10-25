@@ -7,6 +7,7 @@ from uuid import uuid4
 
 from src.config import get_settings
 from src.services import persist
+from src.services.auth_principal import AuthPrincipal
 from src.services.documents import ingest_text
 from src.services.rag import invalidate_local_index
 
@@ -29,6 +30,7 @@ def ingest_to_knowledge_base(
     content: str,
     content_type: str = "text/markdown",
     project_id: str | None = None,
+    principal: AuthPrincipal | None = None,
 ) -> dict[str, Any]:
     """
     常にローカル索引を更新する。
@@ -36,7 +38,12 @@ def ingest_to_knowledge_base(
     """
     settings = get_settings()
     job_id = str(uuid4())
-    local = ingest_text(filename=filename, content=content, content_type=content_type)
+    local = ingest_text(
+        filename=filename,
+        content=content,
+        content_type=content_type,
+        principal=principal,
+    )
     job: dict[str, Any] = {
         "job_id": job_id,
         "project_id": project_id,
@@ -56,12 +63,17 @@ def ingest_to_knowledge_base(
     try:
         from src.aws_clients import bedrock_agent, s3_client
 
-        key = f"projects/{project_id or 'default'}/{job_id}_{filename}"
+        tenant = (principal.tenant_id if principal else None) or project_id or "default"
+        key = f"tenants/{tenant}/{job_id}_{filename}"
+        metadata = {"tenant_id": tenant}
+        if principal:
+            metadata["owner_subject"] = principal.subject
         s3_client().put_object(
             Bucket=settings.s3_documents_bucket,
             Key=key,
             Body=content.encode("utf-8"),
             ContentType=content_type,
+            Metadata=metadata,
         )
         job["s3_key"] = key
         job["status"] = "s3_uploaded"

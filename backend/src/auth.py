@@ -1,4 +1,4 @@
-"""API キー / JWT によるプロジェクト認可とミドルウェア設定。"""
+"""Cognito / 開発 JWT / API キー認証と request.state.principal。"""
 from __future__ import annotations
 
 from typing import Callable
@@ -6,6 +6,13 @@ from typing import Callable
 from fastapi import Header, HTTPException, Request
 
 from src.config import get_settings
+from src.services.auth_principal import (
+    AuthPrincipal,
+    principal_from_api_key_project,
+    principal_from_cognito,
+    principal_from_dev_jwt,
+)
+from src.services.cognito_auth import CognitoAuthError, verify_cognito_access_token
 from src.services.projects import resolve_project, seed_default_project
 
 
@@ -15,7 +22,6 @@ def project_from_headers(
 ) -> dict:
     """ヘッダーからプロジェクトを解決し、API キーを検証する。"""
     settings = get_settings()
-    # 認証任意: API_KEYS / require_api_key が無効な場合
     if not settings.require_api_key and not settings.api_keys.strip():
         return resolve_project(x_api_key, x_project_id) or seed_default_project()
 
@@ -23,7 +29,6 @@ def project_from_headers(
     if settings.require_api_key and not x_api_key:
         raise HTTPException(401, "X-API-Key required")
     if allowed and x_api_key and x_api_key not in allowed:
-        # プロジェクトスコープのキーは引き続き許可
         proj = resolve_project(x_api_key, x_project_id)
         if not proj:
             raise HTTPException(403, "invalid API key")
@@ -34,13 +39,38 @@ def project_from_headers(
     return proj
 
 
+def _resolve_bearer_principal(auth_header: str, settings) -> AuthPrincipal | None:
+    if not auth_header.lower().startswith("bearer "):
+        return None
+    token = auth_header.split(" ", 1)[1].strip()
+    if not token:
+        return None
+
+    if settings.cognito_configured:
+        try:
+            claims = verify_cognito_access_token(token)
+            return principal_from_cognito(claims)
+        except CognitoAuthError:
+            if settings.auth_enforce and not settings.dev_jwt_allowed:
+                return None
+        except Exception:
+            if settings.auth_enforce and not settings.dev_jwt_allowed:
+                return None
+
+    if settings.dev_jwt_allowed:
+        from src.services.jwt_tokens import verify_access_token
+
+        claims = verify_access_token(token)
+        if claims:
+            return principal_from_dev_jwt(claims)
+    return None
+
+
 def install_auth_middleware(app) -> None:
-    """任意のソフト認証: キー/JWT がある場合に request.state にプロジェクトを付与する。"""
+    """Bearer / API キーを検証し request.state.principal を設定する。"""
 
     @app.middleware("http")
     async def _auth_mw(request: Request, call_next: Callable):
-        key = request.headers.get("X-API-Key")
-        pid = request.headers.get("X-Project-Id")
         settings = get_settings()
         path = request.url.path
         public = path in (
@@ -49,30 +79,45 @@ def install_auth_middleware(app) -> None:
             "/docs",
             "/openapi.json",
             "/redoc",
-            "/api/auth/token",
+            "/api/auth/config",
         ) or path.startswith("/docs")
 
         auth = request.headers.get("Authorization") or ""
-        jwt_claims = None
-        if auth.lower().startswith("bearer ") and settings.jwt_configured:
-            from src.services.jwt_tokens import verify_access_token
+        key = request.headers.get("X-API-Key")
+        pid = request.headers.get("X-Project-Id")
 
-            jwt_claims = verify_access_token(auth.split(" ", 1)[1].strip())
-            if jwt_claims is None and settings.require_api_key and path.startswith("/api/") and not public:
-                from fastapi.responses import JSONResponse
+        principal: AuthPrincipal | None = _resolve_bearer_principal(auth, settings)
 
-                return JSONResponse({"detail": "invalid or expired JWT"}, status_code=401)
+        if principal is None and key:
+            proj = resolve_project(key, pid)
+            if proj:
+                allowed = {k.strip() for k in settings.api_keys.split(",") if k.strip()}
+                if allowed and key not in allowed:
+                    # プロジェクトスコープキーのみ許可
+                    if not proj.get("api_key_hash"):
+                        from fastapi.responses import JSONResponse
+
+                        return JSONResponse({"detail": "invalid API key"}, status_code=403)
+                principal = principal_from_api_key_project(proj)
 
         if (
-            settings.require_api_key
-            and not key
-            and jwt_claims is None
+            settings.auth_enforce
+            and principal is None
             and path.startswith("/api/")
             and not public
+            and path != "/api/auth/token"
         ):
             from fastapi.responses import JSONResponse
 
-            return JSONResponse({"detail": "X-API-Key or Bearer JWT required"}, status_code=401)
+            return JSONResponse(
+                {"detail": "Bearer Cognito/JWT or X-API-Key required"},
+                status_code=401,
+            )
+
+        if principal is None:
+            principal = AuthPrincipal.anonymous_dev()
+
         request.state.project = resolve_project(key, pid) or seed_default_project()
-        request.state.jwt_claims = jwt_claims
+        request.state.jwt_claims = principal.claims if principal.provider != "anonymous" else None
+        request.state.principal = principal
         return await call_next(request)

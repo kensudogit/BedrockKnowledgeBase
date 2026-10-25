@@ -57,6 +57,10 @@ class Settings(BaseSettings):
     openai_api_key: str = ""
     openai_text_model_id: str = "gpt-4o-mini"
     jwt_secret: str = ""
+    cognito_user_pool_id: str = ""
+    cognito_app_client_id: str = ""
+    cognito_issuer: str = ""
+    cognito_domain_prefix: str = ""
 
     # Google Cloud / Vertex AI
     gcp_project_id: str = ""
@@ -133,6 +137,37 @@ class Settings(BaseSettings):
     def jwt_configured(self) -> bool:
         """JWT 署名用シークレットが設定されているか。"""
         return bool(self.jwt_secret.strip())
+
+    @property
+    def cognito_hosted_ui_base_url(self) -> str:
+        prefix = self.cognito_domain_prefix.strip()
+        region = self.aws_region.strip()
+        if not prefix or not region:
+            return ""
+        return f"https://{prefix}.auth.{region}.amazoncognito.com"
+
+    @property
+    def cognito_configured(self) -> bool:
+        """Cognito User Pool + App Client が設定されているか。"""
+        return bool(
+            self.cognito_user_pool_id.strip()
+            and self.cognito_app_client_id.strip()
+            and self.aws_region.strip()
+        )
+
+    @property
+    def auth_enforce(self) -> bool:
+        """API で認証を必須にするか（Cognito または本番/REQUIRE_API_KEY）。"""
+        if self.cognito_configured:
+            return True
+        return self.require_api_key or self.is_production
+
+    @property
+    def dev_jwt_allowed(self) -> bool:
+        """HS256 開発 JWT を API 認証に使えるか（本番 Cognito 時は不可）。"""
+        if self.cognito_configured and self.is_production:
+            return False
+        return self.jwt_configured
 
     @property
     def bedrock_credentials_configured(self) -> bool:

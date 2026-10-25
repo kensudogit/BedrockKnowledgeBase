@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { AuthBar } from "@/components/AuthBar";
 
 const links = [
   { href: "/", label: "ホーム" },
@@ -34,6 +35,7 @@ export function Nav() {
           </Link>
         ))}
       </nav>
+      <AuthBar />
     </header>
   );
 }

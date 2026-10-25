@@ -4,8 +4,11 @@ from __future__ import annotations
 from typing import Any, Optional
 from uuid import uuid4
 
-from fastapi import APIRouter, File, Header, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, Header, HTTPException, UploadFile
 from pydantic import BaseModel, Field
+
+from src.deps import get_principal
+from src.services.auth_principal import AuthPrincipal
 
 from src.services.agents import invoke_agent
 from src.services.analysis import analyze_image, analyze_rag, analyze_tabular, analyze_text
@@ -177,42 +180,90 @@ class IngestKbRequest(BaseModel):
 
 
 class TokenRequest(BaseModel):
-    """JWT アクセストークン発行リクエスト。"""
+    """JWT アクセストークン発行リクエスト（開発用 HS256）。"""
     subject: str = "bkb-user"
+    tenant_id: str = "default"
+    roles: str = "viewer,admin"
     expires_in_sec: int = 3600
 
 
 # --- 認証エンドポイント ---
 
 
+@router.get("/auth/config")
+def auth_config():
+    """フロント向け認証設定（秘密鍵は返さない）。"""
+    from src.config import get_settings
+
+    s = get_settings()
+    return {
+        "auth_enforce": s.auth_enforce,
+        "cognito_configured": s.cognito_configured,
+        "dev_jwt_allowed": s.dev_jwt_allowed,
+        "jwt_configured": s.jwt_configured,
+        "aws_region": s.aws_region if s.cognito_configured else "",
+        "cognito_user_pool_id": s.cognito_user_pool_id if s.cognito_configured else "",
+        "cognito_app_client_id": s.cognito_app_client_id if s.cognito_configured else "",
+        "cognito_hosted_ui_base_url": s.cognito_hosted_ui_base_url,
+        "oauth_redirect_path": "/auth/callback",
+    }
+
+
 @router.post("/auth/token")
 def auth_token(body: TokenRequest):
-    """JWT_SECRET で署名した Bearer JWT を発行する。"""
+    """JWT_SECRET で署名した Bearer JWT を発行する（開発・検証用）。"""
     from src.config import get_settings
     from src.services.jwt_tokens import issue_access_token
 
-    if not get_settings().jwt_configured:
+    s = get_settings()
+    if s.cognito_configured and s.is_production:
+        raise HTTPException(403, "Production uses Cognito; dev token endpoint disabled")
+    if not s.jwt_configured:
         raise HTTPException(503, "JWT_SECRET is not configured")
     try:
-        return issue_access_token(subject=body.subject, expires_in_sec=body.expires_in_sec)
+        return issue_access_token(
+            subject=body.subject,
+            expires_in_sec=body.expires_in_sec,
+            extra={"tenant_id": body.tenant_id, "roles": body.roles},
+        )
     except Exception as exc:
         raise HTTPException(500, str(exc)) from exc
 
 
 @router.get("/auth/me")
-def auth_me(authorization: Optional[str] = Header(default=None)):
-    """Authorization: Bearer JWT を検証し、クレームを返す。"""
+def auth_me(
+    authorization: Optional[str] = Header(default=None),
+    principal: AuthPrincipal = Depends(get_principal),
+):
+    """Bearer トークンまたは middleware で解決した主体情報を返す。"""
     from src.config import get_settings
-    from src.services.jwt_tokens import verify_access_token
 
-    if not get_settings().jwt_configured:
-        raise HTTPException(503, "JWT_SECRET is not configured")
-    if not authorization or not authorization.lower().startswith("bearer "):
-        raise HTTPException(401, "Authorization: Bearer <token> required")
-    claims = verify_access_token(authorization.split(" ", 1)[1].strip())
-    if not claims:
-        raise HTTPException(401, "invalid or expired JWT")
-    return {"ok": True, "claims": claims}
+    s = get_settings()
+    if authorization and authorization.lower().startswith("bearer "):
+        token = authorization.split(" ", 1)[1].strip()
+        if s.cognito_configured:
+            try:
+                from src.services.cognito_auth import verify_cognito_access_token
+
+                claims = verify_cognito_access_token(token)
+                return {"ok": True, "provider": "cognito", "claims": claims}
+            except Exception:
+                pass
+        if s.dev_jwt_allowed:
+            from src.services.jwt_tokens import verify_access_token
+
+            claims = verify_access_token(token)
+            if claims:
+                return {"ok": True, "provider": "jwt_dev", "claims": claims}
+    if principal.provider == "anonymous" and s.auth_enforce:
+        raise HTTPException(401, "Authentication required")
+    return {
+        "ok": True,
+        "provider": principal.provider,
+        "subject": principal.subject,
+        "tenant_id": principal.tenant_id,
+        "roles": sorted(principal.roles),
+    }
 
 
 # --- Bedrock 生成（テキスト/画像/埋め込み/ガードレール） ---
@@ -333,7 +384,7 @@ def evaluation_compare(a: str, b: str):
 
 
 @router.post("/rag/query")
-def rag_query(body: RagRequest):
+def rag_query(body: RagRequest, principal: AuthPrincipal = Depends(get_principal)):
     """RAG で質問に回答し、任意でセッション履歴に追記する。"""
     hist = history_for_rag(body.session_id)
     out = rag_answer(
@@ -342,6 +393,7 @@ def rag_query(body: RagRequest):
         top_k=body.top_k,
         history=hist,
         apply_guardrail=body.apply_guardrail,
+        principal=principal,
     )
     if body.session_id:
         append_message(body.session_id, role="user", content=body.query, use_case=body.use_case)
@@ -358,13 +410,13 @@ def rag_query(body: RagRequest):
 
 
 @router.post("/rag/retrieve")
-def rag_retrieve(body: RagRequest):
+def rag_retrieve(body: RagRequest, principal: AuthPrincipal = Depends(get_principal)):
     """ナレッジベースから関連チャンクのみ取得する（生成なし）。"""
-    return retrieve_knowledge_base(body.query, top_k=body.top_k)
+    return retrieve_knowledge_base(body.query, top_k=body.top_k, principal=principal)
 
 
 @router.post("/chat")
-def chat(body: ChatRequest):
+def chat(body: ChatRequest, principal: AuthPrincipal = Depends(get_principal)):
     """マルチターン チャット。必要ならセッション作成し RAG/テキストで回答。"""
     sid = body.session_id or create_session(use_case=body.use_case)["session_id"]
     append_message(sid, role="user", content=body.message, use_case=body.use_case)
@@ -390,6 +442,7 @@ def chat(body: ChatRequest):
             use_case=body.use_case,
             history=hist_prior,
             apply_guardrail=body.apply_guardrail,
+            principal=principal,
         )
         answer = out.get("answer") or ""
         cites = out.get("citations") or []
@@ -444,13 +497,13 @@ def sessions_get(session_id: str):
 
 
 @router.get("/documents")
-def documents_list():
+def documents_list(principal: AuthPrincipal = Depends(get_principal)):
     """取り込み済みドキュメント一覧。"""
-    return {"items": list_documents()}
+    return {"items": list_documents(principal=principal)}
 
 
 @router.post("/documents")
-def documents_create(body: DocIngest):
+def documents_create(body: DocIngest, principal: AuthPrincipal = Depends(get_principal)):
     """テキスト内容をドキュメントストアに取り込む。"""
     if not body.content.strip():
         raise HTTPException(400, "content is empty")
@@ -458,11 +511,15 @@ def documents_create(body: DocIngest):
         filename=body.filename,
         content=body.content,
         content_type=body.content_type,
+        principal=principal,
     )
 
 
 @router.post("/documents/kb-ingest")
-def documents_kb_ingest(body: IngestKbRequest):
+def documents_kb_ingest(
+    body: IngestKbRequest,
+    principal: AuthPrincipal = Depends(get_principal),
+):
     """Bedrock ナレッジベースへの非同期取り込みジョブを開始する。"""
     if not body.content.strip():
         raise HTTPException(400, "content is empty")
@@ -471,6 +528,7 @@ def documents_kb_ingest(body: IngestKbRequest):
         content=body.content,
         content_type=body.content_type,
         project_id=body.project_id,
+        principal=principal,
     )
 
 
@@ -487,7 +545,10 @@ def documents_ingest_status(ingestion_job_id: str):
 
 
 @router.post("/documents/upload")
-async def documents_upload(file: UploadFile = File(...)):
+async def documents_upload(
+    file: UploadFile = File(...),
+    principal: AuthPrincipal = Depends(get_principal),
+):
     """アップロードファイルを UTF-8/CP932 でデコードして取り込む。"""
     raw = await file.read()
     try:
@@ -501,6 +562,7 @@ async def documents_upload(file: UploadFile = File(...)):
         filename=name,
         content=text,
         content_type=file.content_type or "text/plain",
+        principal=principal,
     )
 
 

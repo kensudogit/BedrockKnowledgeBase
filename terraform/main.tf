@@ -12,6 +12,10 @@ provider "aws" {
   region = var.aws_region
 }
 
+locals {
+  cognito_domain = var.cognito_domain_prefix != "" ? var.cognito_domain_prefix : "${var.project}-${var.app_env}-auth"
+}
+
 resource "aws_s3_bucket" "documents" {
   bucket = var.documents_bucket_name
 }
@@ -118,6 +122,9 @@ resource "aws_lambda_function" "api" {
       USE_BEDROCK_MOCK           = var.use_bedrock_mock
       REQUIRE_API_KEY            = var.require_api_key
       ENABLE_TELEMETRY           = "true"
+      COGNITO_USER_POOL_ID       = var.enable_cognito ? aws_cognito_user_pool.main[0].id : ""
+      COGNITO_APP_CLIENT_ID      = var.enable_cognito ? aws_cognito_user_pool_client.spa[0].id : ""
+      COGNITO_DOMAIN_PREFIX      = var.enable_cognito ? aws_cognito_user_pool_domain.main[0].domain : ""
     }
   }
 }
@@ -174,10 +181,3 @@ resource "aws_lambda_permission" "apigw" {
   source_arn    = "${aws_apigatewayv2_api.http.execution_arn}/*/*"
 }
 
-output "api_endpoint" {
-  value = aws_apigatewayv2_api.http.api_endpoint
-}
-
-output "documents_bucket" {
-  value = aws_s3_bucket.documents.bucket
-}

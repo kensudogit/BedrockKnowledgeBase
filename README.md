@@ -48,6 +48,15 @@ AWS 上のエンタープライズ向け生成 AI 基盤（ローカル開発 + 
 
 詳細: [docs/DS_WORKFLOW.md](docs/DS_WORKFLOW.md) · 業務対応表: [docs/ROLE_CAPABILITIES.md](docs/ROLE_CAPABILITIES.md)
 
+### 認証・RAG ACL（本番向け）
+
+- **Amazon Cognito** — `COGNITO_USER_POOL_ID` + `COGNITO_APP_CLIENT_ID` 設定時、API は **アクセストークン**（RS256/JWKS）を必須化。本番では `POST /api/auth/token`（HS256 開発 JWT）は無効。
+- **開発 JWT** — `JWT_SECRET` + `POST /api/auth/token`（`tenant_id` / `roles` クレーム付与）。フロントは `frontend/src/lib/auth.ts` の `loginDevToken` / `sessionStorage`。
+- **RAG ACL** — 取り込み時に `{file}.acl.json`（テナント・ロール）。検索前に ACL フィルタ。Bedrock KB は `tenant_id` メタデータフィルタ（`shared` または自テナント）。
+- レビュー: [docs/SECURITY_REVIEW.md](docs/SECURITY_REVIEW.md) · Terraform: [docs/terraform/COGNITO.md](docs/terraform/COGNITO.md)
+- ログイン UI: `/login` · コールバック: `/auth/callback`（PKCE）
+- 設定例: [.env.example](.env.example)
+
 ### 業務工程カバー
 
 1. **AIモデル分析・開発** — `/lab`（Text / RAG / Image / Tabular）+ Experiments  

@@ -8,8 +8,15 @@ from pathlib import Path
 from typing import Any
 
 from src.config import get_settings
+from src.services.auth_principal import AuthPrincipal
 from src.services.bedrock_embed import embed_texts
 from src.services.bedrock_text import generate_text
+from src.services.document_acl import (
+    bedrock_metadata_filter,
+    default_shared_acl,
+    principal_can_read,
+    read_acl,
+)
 from src.services.guardrails import apply_guardrails
 from src.services.prompts import list_prompts
 
@@ -94,7 +101,13 @@ def _bm25_scores(query: str, docs: list[str], k1: float = 1.5, b: float = 0.75) 
     return scores
 
 
-def _chunk_text(text: str, source: str) -> list[dict[str, Any]]:
+def _chunk_text(
+    text: str,
+    source: str,
+    *,
+    acl: dict[str, Any] | None = None,
+    source_path: Path | None = None,
+) -> list[dict[str, Any]]:
     text = text.strip()
     if not text:
         return []
@@ -105,11 +118,18 @@ def _chunk_text(text: str, source: str) -> list[dict[str, Any]]:
         piece = text[start : start + _CHUNK_SIZE].strip()
         if not piece:
             continue
+        meta_acl = acl or (
+            read_acl(source_path, fallback=default_shared_acl())
+            if source_path
+            else default_shared_acl()
+        )
         out.append(
             {
                 "text": piece,
                 "source": source,
                 "chunk_index": idx,
+                "acl": meta_acl,
+                "source_path": str(source_path) if source_path else None,
             }
         )
         idx += 1
@@ -142,7 +162,7 @@ def _load_local_chunk_records(epoch: int = 0) -> tuple[dict[str, Any], ...]:
                 text = path.read_text(encoding="utf-8")
             except Exception:
                 continue
-            records.extend(_chunk_text(text, path.name))
+            records.extend(_chunk_text(text, path.name, source_path=path))
             if len(records) >= _MAX_CHUNKS:
                 return tuple(records)
     if not records:
@@ -151,9 +171,23 @@ def _load_local_chunk_records(epoch: int = 0) -> tuple[dict[str, Any], ...]:
                 "text": "デモ文書がありません。samples/ または文書アップロードを利用してください。",
                 "source": "system",
                 "chunk_index": 0,
+                "acl": default_shared_acl(),
             },
         )
     return tuple(records)
+
+
+def _filter_records_for_principal(
+    records: list[dict[str, Any]], principal: AuthPrincipal | None
+) -> list[dict[str, Any]]:
+    if principal is None:
+        return records
+    out: list[dict[str, Any]] = []
+    for rec in records:
+        acl = rec.get("acl") or default_shared_acl()
+        if principal_can_read(principal, acl):
+            out.append(rec)
+    return out
 
 
 def _normalize_citation(raw: dict[str, Any], *, rank: int = 0) -> dict[str, Any]:
@@ -180,9 +214,16 @@ def _normalize_citation(raw: dict[str, Any], *, rank: int = 0) -> dict[str, Any]
     }
 
 
-def retrieve_local(query: str, top_k: int = 5) -> list[dict[str, Any]]:
+def retrieve_local(
+    query: str,
+    top_k: int = 5,
+    *,
+    principal: AuthPrincipal | None = None,
+) -> list[dict[str, Any]]:
     """ローカル索引から BM25 + 埋め込みハイブリッドで top_k 件を検索する。"""
-    records = list(_load_local_chunk_records(_INDEX_EPOCH))
+    records = _filter_records_for_principal(
+        list(_load_local_chunk_records(_INDEX_EPOCH)), principal
+    )
     docs = [r["text"] for r in records]
     bm25 = _bm25_scores(query, docs)
     # ハイブリッド: BM25 で絞り込み → 埋め込みで再ランク
@@ -220,21 +261,28 @@ def _cosine(a: list[float], b: list[float]) -> float:
     return dot / (na * nb)
 
 
-def retrieve_knowledge_base(query: str, top_k: int = 5) -> dict[str, Any]:
+def retrieve_knowledge_base(
+    query: str,
+    top_k: int = 5,
+    *,
+    principal: AuthPrincipal | None = None,
+) -> dict[str, Any]:
     """Bedrock KB またはローカル索引から引用を取得する。"""
     settings = get_settings()
     if settings.mock_mode or not settings.bedrock_knowledge_base_id:
-        cites = retrieve_local(query, top_k=top_k)
+        cites = retrieve_local(query, top_k=top_k, principal=principal)
         return {"citations": cites, "source": "local_index", "mock": True}
 
     from src.aws_clients import bedrock_agent_runtime
 
+    vector_cfg: dict[str, Any] = {"numberOfResults": top_k}
+    if principal is not None:
+        vector_cfg["filter"] = bedrock_metadata_filter(principal)
+
     resp = bedrock_agent_runtime().retrieve(
         knowledgeBaseId=settings.bedrock_knowledge_base_id,
         retrievalQuery={"text": query},
-        retrievalConfiguration={
-            "vectorSearchConfiguration": {"numberOfResults": top_k}
-        },
+        retrievalConfiguration={"vectorSearchConfiguration": vector_cfg},
     )
     cites = []
     for i, r in enumerate(resp.get("retrievalResults", [])):
@@ -295,6 +343,7 @@ def rag_answer(
     top_k: int = 5,
     history: list[dict[str, str]] | None = None,
     apply_guardrail: bool = True,
+    principal: AuthPrincipal | None = None,
 ) -> dict[str, Any]:
     """RAG パイプラインで回答・引用・ガードレール結果を返す。"""
     settings = get_settings()
@@ -339,7 +388,14 @@ def rag_answer(
                         f"{settings.bedrock_text_model_id}"
                     ),
                     "retrievalConfiguration": {
-                        "vectorSearchConfiguration": {"numberOfResults": top_k}
+                        "vectorSearchConfiguration": {
+                            "numberOfResults": top_k,
+                            **(
+                                {"filter": bedrock_metadata_filter(principal)}
+                                if principal is not None
+                                else {}
+                            ),
+                        }
                     },
                 },
             },
@@ -386,7 +442,7 @@ def rag_answer(
             "use_case": use_case,
         }
 
-    retrieved = retrieve_knowledge_base(q, top_k=top_k)
+    retrieved = retrieve_knowledge_base(q, top_k=top_k, principal=principal)
     cites = retrieved.get("citations") or []
     context = "\n\n".join(
         f"[{c.get('source')}] {c.get('text')}" for c in cites if c.get("text")

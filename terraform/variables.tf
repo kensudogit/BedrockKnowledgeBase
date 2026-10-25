@@ -66,3 +66,30 @@ variable "log_retention_days" {
   type    = number
   default = 30
 }
+
+variable "enable_cognito" {
+  type        = bool
+  default     = true
+  description = "Cognito User Pool + SPA クライアントを作成する"
+}
+
+variable "cognito_domain_prefix" {
+  type        = string
+  default     = ""
+  description = "Hosted UI ドメインプレフィックス（空なら project-env を使用）"
+}
+
+variable "cognito_callback_urls" {
+  type = list(string)
+  default = [
+    "http://localhost:3010/auth/callback",
+  ]
+  description = "OAuth callback URLs（本番 URL を追加）"
+}
+
+variable "cognito_logout_urls" {
+  type = list(string)
+  default = [
+    "http://localhost:3010/login",
+  ]
+}
