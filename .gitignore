@@ -36,7 +36,8 @@ terraform/terraform.local.tfvars
 !terraform/*.tfvars.example
 
 # Data / uploads / ops persistence
-data/uploads/
+data/uploads/*
+!data/uploads/.gitkeep
 data/cache/
 data/ops/
 backend/data/

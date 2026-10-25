@@ -1,3 +1,6 @@
+# BedrockKnowledgeBase — ローカル Docker（Postgres + DynamoDB Local + 任意 LocalStack）
+# 起動: docker compose up -d --build  （初回は copy .env.docker.example .env）
+
 services:
   postgres:
     image: postgres:16-alpine
@@ -10,12 +13,13 @@ services:
       - "5435:5432"
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U bkb_user -d bkb_db"]
       interval: 5s
       timeout: 5s
-      retries: 5
+      retries: 8
+    restart: unless-stopped
 
   dynamodb:
     image: amazon/dynamodb-local:latest
@@ -23,8 +27,10 @@ services:
     command: "-jar DynamoDBLocal.jar -sharedDb -inMemory"
     ports:
       - "8001:8000"
+    restart: unless-stopped
 
   localstack:
+    profiles: ["aws-local"]
     image: localstack/localstack:3
     container_name: bkb-localstack
     environment:
@@ -35,7 +41,8 @@ services:
       - "4566:4566"
     volumes:
       - localstack_data:/var/lib/localstack
-      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh
+      - ./scripts/localstack-init.sh:/etc/localstack/init/ready.d/init.sh:ro
+    restart: unless-stopped
 
   backend:
     build:
@@ -45,9 +52,20 @@ services:
     env_file:
       - .env
     environment:
+      APP_ENV: development
+      PORT: "8180"
       DATABASE_URL: postgresql://bkb_user:bkb_password@postgres:5432/bkb_db
       DYNAMODB_ENDPOINT: http://dynamodb:8000
-      AWS_ENDPOINT_URL: http://localstack:4566
+      AWS_ENDPOINT_URL: ${AWS_ENDPOINT_URL:-}
+      CORS_ORIGINS: http://localhost:3010
+      JWT_SECRET: ${JWT_SECRET:-docker-dev-jwt-secret-change-me}
+      USE_BEDROCK_MOCK: ${USE_BEDROCK_MOCK:-true}
+      REQUIRE_API_KEY: ${REQUIRE_API_KEY:-false}
+      COGNITO_USER_POOL_ID: ${COGNITO_USER_POOL_ID:-}
+      COGNITO_APP_CLIENT_ID: ${COGNITO_APP_CLIENT_ID:-}
+      COGNITO_DOMAIN_PREFIX: ${COGNITO_DOMAIN_PREFIX:-}
+      COGNITO_ISSUER: ${COGNITO_ISSUER:-}
+      OPENAI_API_KEY: ${OPENAI_API_KEY:-}
     ports:
       - "8180:8180"
     depends_on:
@@ -58,26 +76,49 @@ services:
     volumes:
       - ./backend:/app
       - ./samples:/app/samples:ro
+      - ./data/uploads:/app/data/uploads
+      - backend_pip_cache:/root/.cache/pip
     command: uvicorn src.main:app --host 0.0.0.0 --port 8180 --reload
+    healthcheck:
+      test:
+        [
+          "CMD",
+          "python",
+          "-c",
+          "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8180/health', timeout=3)",
+        ]
+      interval: 15s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
+    restart: unless-stopped
 
   frontend:
     build:
       context: ./frontend
       dockerfile: Dockerfile
     container_name: bkb-frontend
+    env_file:
+      - .env
     environment:
       INTERNAL_API_URL: http://backend:8180
       NEXT_PUBLIC_API_URL: ""
+      NEXT_PUBLIC_APP_URL: ${NEXT_PUBLIC_APP_URL:-http://localhost:3010}
     ports:
       - "3010:3010"
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
     volumes:
       - ./frontend:/app
-      - /app/node_modules
-      - /app/.next
+      - frontend_node_modules:/app/node_modules
+      - frontend_next:/app/.next
     command: npm run dev
+    restart: unless-stopped
 
 volumes:
   postgres_data:
   localstack_data:
+  backend_pip_cache:
+  frontend_node_modules:
+  frontend_next:

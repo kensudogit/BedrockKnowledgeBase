@@ -97,6 +97,21 @@ Web画面 (Next.js)
 
 ## クイックスタート
 
+### Docker（推奨）
+
+前提: Docker Desktop
+
+```powershell
+copy .env.docker.example .env
+.\scripts\docker-up.ps1
+# または: docker compose up -d --build
+```
+
+- UI: http://localhost:3010/login · API: http://localhost:8180/docs  
+- 詳細: [docs/DOCKER.md](docs/DOCKER.md)
+
+### ネイティブ（Python + Node）
+
 前提: Docker Desktop, Python 3.12, Node.js 20+
 
 ```bat

@@ -1,0 +1,44 @@
+# 本番に近い単一イメージ（reload なし）。ルート Dockerfile を使用。
+# 起動: docker compose -f docker-compose.prod-local.yml up -d --build
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: bkb_user
+      POSTGRES_PASSWORD: bkb_password
+      POSTGRES_DB: bkb_db
+    ports:
+      - "5435:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/db/init.sql:/docker-entrypoint-initdb.d/init.sql:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U bkb_user -d bkb_db"]
+      interval: 5s
+      timeout: 5s
+      retries: 8
+
+  app:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    env_file:
+      - .env
+    environment:
+      DATABASE_URL: postgresql://bkb_user:bkb_password@postgres:5432/bkb_db
+      PORT: "3010"
+      INTERNAL_API_URL: http://127.0.0.1:8180
+      JWT_SECRET: ${JWT_SECRET:-docker-dev-jwt-secret-change-me}
+      USE_BEDROCK_MOCK: ${USE_BEDROCK_MOCK:-true}
+      CORS_ORIGINS: http://localhost:3010
+    ports:
+      - "3010:3010"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    volumes:
+      - ./data/uploads:/app/data/uploads
+
+volumes:
+  postgres_data:
